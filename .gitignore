@@ -1,4 +1,4 @@
 .env 
-schema.sql
-go.mod
-go.sum
+/schema.sql
+/go.mod
+/go.sum
