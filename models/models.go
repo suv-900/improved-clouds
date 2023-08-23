@@ -151,6 +151,19 @@ func UpdatePass(pass string, userid uint64) error {
 	}
 }
 
+
+/*
+func CheckCategory(categoryName string) (bool, uint) {
+	var categoryId uint
+	db.Exec("SELECT (category_id) FROM category WHERE category_name=?", categoryName).Scan(&category)
+	if categoryId == nil {
+		return false, 0
+	}
+	return true, categoryId
+}*/
+
+
+
 // POST
 func CreatePost(post Posts) (uint64, error) {
 	var postid uint64
@@ -164,6 +177,40 @@ func CreatePost(post Posts) (uint64, error) {
 		return postid, nil
 	}
 
+}
+func DeletePost(postid uint64) error {
+
+	r := db.Exec("DELETE FROM posts WHERE postid=?", postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	return nil
+}
+
+func UpdatePost(postid uint64, post Posts) error {
+
+	tx := db.Begin()
+	r := tx.Exec("UPDATE posts SET post_content=? post_title=? WHERE postid=?", post.Post_content, post.Post_title, postid)
+	if r.Error != nil {
+		tx.Rollback()
+		return r.Error
+	} else {
+		tx.Commit()
+		return nil
+	}
+
+}
+func GetPostsByUserId(userId uint64) []Posts {
+	var posts []Posts
+	db.Raw("SELECT (post_title,post_content) FROM posts WHERE authorid=? LIMIT 5", userId).Scan(&posts)
+	return posts
+}
+func PostById(postid uint64) (Posts, string) {
+	var post Posts
+	var username string
+	db.Raw("SELECT (post_title,post_content,post_category,post_tldr,authorid) FROM posts WHERE post_id=?", postid).Scan(&post)
+	db.Raw("SELECT username FROM users WHERE user_id=?", post.Authorid).Scan(&username)
+	return post, username
 }
 
 func FeedGenerator(userid uint64)[]Posts{
@@ -190,54 +237,41 @@ func FeedGenerator(userid uint64)[]Posts{
   return posts
 }
 
-/*
-func CheckCategory(categoryName string) (bool, uint) {
-	var categoryId uint
-	db.Exec("SELECT (category_id) FROM category WHERE category_name=?", categoryName).Scan(&category)
-	if categoryId == nil {
-		return false, 0
-	}
-	return true, categoryId
-}*/
-
-func GetAllPostsByUserId(userId uint64) []Posts {
-	var posts []Posts
-	db.Raw("SELECT (post_title,post_content,createdAt) FROM posts WHERE authorid=?", userId).Scan(&posts)
-	return posts
-}
-
-func DeletePost(postid uint64) error {
-
-	r := db.Exec("DELETE FROM posts WHERE postid=?", postid)
-	if r.Error != nil {
-		return r.Error
-	}
-	return nil
-}
-
-func UpdatePost(postid uint64, post Posts) error {
-
-	tx := db.Begin()
-	r := tx.Exec("UPDATE posts SET post_content=? post_title=? WHERE postid=?", post.Post_content, post.Post_title, postid)
-	if r.Error != nil {
-		tx.Rollback()
-		return r.Error
-	} else {
-		tx.Commit()
-		return nil
-	}
-
-}
-
-func PostById(postid uint64) (Posts, string) {
-	var post Posts
-	var username string
-	db.Raw("SELECT (post_title,post_content,post_category,post_tldr,authorid) FROM posts WHERE post_id=?", postid).Scan(&post)
-	db.Raw("SELECT username FROM users WHERE user_id=?", post.Authorid).Scan(&username)
-	return post, username
-}
 
 // COMMENT
+
+func LikePost(postid uint64,userid uint64)bool{
+  var worker sync.WaitGroup
+  
+  worker.Add(1)
+  errchannel:=make(chan bool,1)
+  go func(){
+    defer worker.Done()
+    tx:=db.Begin()
+    r:=tx.Exec("INSERT INTO like_posts (user_id,post_id) VALUES(?,?)",userid,postid)
+    if r.Error!=nil{
+      tx.Rollback()
+      fmt.Println("Error occured while inserting like to like_posts %w",r.Error)
+      errchannel<-true
+      return
+    }
+    errchannel<-false
+  }()
+
+  if !(<-errchannel){
+    return true
+  }
+  
+  worker.Add(1)
+  go func(){
+    defer worker.Done() 
+    db.Exec("UPDATE posts SET num_likes=num_likes+1 WHERE post_id=?",postid)
+  }()
+
+  worker.Wait()
+  return false 
+}
+
 func GetCommentsByPostID(postid uint) []UsernameAndComment {
 	commentarr := make([]UsernameAndComment, 6)
 
@@ -272,7 +306,7 @@ func GetCommentsByPostID(postid uint) []UsernameAndComment {
 func AddComment(postid uint64, userid uint64, comment string) error {
 
 	tx := db.Begin()
-	r := tx.Exec("INSERT INTO comments (user_id,post_id,comment_content) VALUES(?,?,?)", userid, postid, comment)
+	r := tx.Exec("INSERT INTO post_comments (user_id,post_id,comment_content) VALUES(?,?,?)", userid, postid, comment)
 	if r.Error != nil {
 		tx.Rollback()
 		return r.Error
@@ -297,10 +331,3 @@ func FetchComments(postid uint64) []Comment {
 	return comments
 }
 
-/*
-func GetRandomisedPosts() {
-	var posts []Posts
-
-	db.Exec("SELECT * FROM posts WHERE  ")
-}
-*/
