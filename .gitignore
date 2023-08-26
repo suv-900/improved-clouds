@@ -1,5 +1,6 @@
 .env 
-./schema.sql
-./go.mod
-./go.sum
-./note.txt
+schema.sql
+go.mod
+go.sum
+note.txt
+tags
