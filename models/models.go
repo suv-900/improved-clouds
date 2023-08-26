@@ -45,8 +45,10 @@ type Comment struct {
 	Comment_id      uint64    `gorm:"primarykey"`
 	Post_id         uint64    `db:"post_id"`
 	User_id         uint64    `db:"user_id"`
-	Comment_content string    `db:"comment_content"`
-	CreatedAt       time.Time `db:"createdAt"`
+  Username        string    `db:"username"`
+  Comment_content string    `db:"comment_content"`
+  Comment_likes   uint64    `db:"comment_likes"`
+  CreatedAt       time.Time `db:"createdAt"`
 	UpdatedAt       time.Time `db:"updatedAt"`
 }
 
@@ -62,7 +64,9 @@ type UsernameAndPost struct {
 type UsernameAndComment struct {
 	UserID          uint64
 	Username        string
-	Comment_content string
+  CommentID       uint64
+  Comment_content string
+  Comment_likes   uint64
 }
 
 //root:Core@123@/blogweb?
@@ -272,34 +276,38 @@ func LikePost(postid uint64,userid uint64)bool{
   return false 
 }
 
-func GetCommentsByPostID(postid uint) []UsernameAndComment {
-	commentarr := make([]UsernameAndComment, 6)
+func LikeAComment(commentid uint64){
+   db.Exec("UPDATE comments SET comment_likes=comment_likes+1 WHERE comment_id=?",commentid) 
+}
+
+func DislikeAComment(commentid uint64){
+   db.Exec("UPDATE comments SET comment_likes=comment_likes-1 WHERE comment_id=?",commentid) 
+}
+
+func GetCommentsByPostID(postid uint64,offset uint32) []UsernameAndComment {
+	commentarr := make([]UsernameAndComment, 5)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 6; i++ {
 		wg.Add(1)
-
-		var comment Comment
 		go func() {
 			defer wg.Done()
-			db.Raw("SELECT (comment_content,user_id) FROM comments WHERE post_id=?", postid).Scan(&comment)
+			db.Raw(
+         ` SELECT (comment_id,user_id,username,comment_content) FROM post_comments WHERE post_id=? 
+           GROUP BY comment_likes DESC 
+           LIMIT 5 OFFSET
+        `, postid,offset).Scan(&commentarr)
 		}()
-
-		wg.Add(1)
-		var username string
-		go func() {
-			defer wg.Done()
-			db.Raw("SELECT username FROM users WHERE user_id=?", comment.User_id).Scan(&username)
-		}()
-
+/*
 		rawComment := UsernameAndComment{
 			UserID:          comment.User_id,
 			Username:        username,
+      CommentID:       comment.Comment_id,
 			Comment_content: comment.Comment_content,
 		}
 		commentarr = append(commentarr, rawComment)
 	}
-	fmt.Println(commentarr)
+*/
+  fmt.Println(commentarr)
 	return commentarr
 }
 
@@ -325,9 +333,25 @@ func RemoveComment(commentId uint64) {
 	db.Exec("DELETE * FROM comments WHERE comment_id=?", commentId)
 }
 
-func FetchComments(postid uint64) []Comment {
-	var comments []Comment
-	db.Raw("SELECT (comment_content,user_id) FROM comments WHERE post_id=?", postid).Scan(&comments)
-	return comments
+//image
+
+func AddProfilePic(userid uint64,image  ) {
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

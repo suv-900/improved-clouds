@@ -1,50 +1,67 @@
-create table users(
-    user_id bigserial primary key,
-    username varchar(20)  unique,
-    email varchar(40) not null,
-    passwordhash varchar(30) not null,
-    userabout varchar(100),
-    createdAt timestamp,
-    updatedAt timestamp,
-)
-create table posts(
-    post_id bigserial primary key,
-    authorid bigint foreign key,
-    post_title varchar(20) not null,
-    post_content text,
-    post_category varchar(60) not null,
---    likes int,
-    createdAt timestamp,
-    updatedAt timestamp,
+CREATE TABLE users (
+    user_id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL,
+    profile_pic BYTEA,  
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(100) NOT NULL,
+    userabout TEXT,
+    
+	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-  )
-create table comments(
-    comment_id bigserial primary key,
-    user_id int,
-    post_id int,
-    comment_content text not null,
-    createdAt timestamp,
-    updatedAt timestamp
-)
-alter table comment add foreign_key "user_id" references users("user_id")
-alter table comment add foreign_key "post_id" references posts("post_id")
+CREATE TABLE categories (
+    category_id BIGSERIAL PRIMARY KEY,
+    category_name VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE posts (
+    post_id BIGSERIAL PRIMARY KEY,
+    user_id INT,
+    category_id INT,
+	post_title varchar(100) NOTNULL,
+	post_content TEXT,
+	num_likes INT DEFAULT 0,
+	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (category_id) REFERENCES categories(category_id)
+);
+
+CREATE TABLE post_likes (
+    like_id BIGSERIAL PRIMARY KEY,
+    user_id INT,
+    post_id INT,
+	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(post_id)
+);
+
+CREATE TABLE comments(
+	comment_id BIGSERIAL PRIMARY KEY,
+	user_id INT REFERENCES users(user_id),
+	username VARCHAR(100) REFERENCES users(username),
+	post_id INT REFERENCES posts(post_id),
+	comment_content TEXT,
+	comment_likes INT,
+	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+);
+
+CREATE TABLE comment_likes(
+	commentlike_id BIGSERIAL PRIMARY KEY,
+	comment_id REFERENCES comments(comment_id),
+	createdAt TIMESTAMP CURRENT_TIMESTAMP,
+);
 
 
-
-create table category(
-    category_id bigserial primary key,
-    category_name varchar(60) ,
-    post_count int,
-    createdAt timestamp,
-    updatedAt timestamp,
-)
-insert into category(catergory_name,post_count) values("technolodgy",0)
-insert into category(catergory_name,post_count) values("technolodgy",0)
-insert into category(catergory_name,post_count) values("technolodgy",0)
-insert into category(catergory_name,post_count) values("technolodgy",0)
-insert into category(catergory_name,post_count) values("technolodgy",0)
-
-alter table posts add foreign_key ""
-
-alter table posts add foreign_key "authorid" references 
-users("user_id");
+CREATE TABLE comment_replies(
+	reply_id BIGSERIAL PRIMARY KEY,
+	comment_id INT REFERENCES post_comments(comment_id),
+	user_id INT REFERENCES users(user_id),
+	reply_content TEXT,
+	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	
+);

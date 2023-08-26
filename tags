@@ -1,0 +1,100 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+AddComment	controllers/commentsController.go	/^func AddComment(w http.ResponseWriter, r *http.Request) {$/;"	f
+AddComment	models/models.go	/^func AddComment(postid uint64, userid uint64, comment string) error {$/;"	f
+Category	models/models.go	/^type Category struct {$/;"	t
+CheckServerHealth	controllers/usercontroller.go	/^func CheckServerHealth(w http.ResponseWriter, r *http.Request) {$/;"	f
+Comment	models/models.go	/^type Comment struct {$/;"	t
+ConnectDB	models/models.go	/^func ConnectDB() error {$/;"	f
+CreatePost	models/models.go	/^func CreatePost(post Posts) (uint64, error) {$/;"	f
+CreateUser	controllers/usercontroller.go	/^func CreateUser(w http.ResponseWriter, r *http.Request) {$/;"	f
+CreateUser	models/models.go	/^func CreateUser(user Users) (uint64, error) {$/;"	f
+CustomPayload	controllers/usercontroller.go	/^type CustomPayload struct {$/;"	t
+DeletePost	models/models.go	/^func DeletePost(postid uint64) error {$/;"	f
+DeleteUser	controllers/usercontroller.go	/^func DeleteUser(w http.ResponseWriter, r *http.Request) {$/;"	f
+DeleteUser	models/models.go	/^func DeleteUser(userid uint64) error {$/;"	f
+EditComment	controllers/commentsController.go	/^func EditComment(w http.ResponseWriter, r *http.Request) {$/;"	f
+EditComment	models/models.go	/^func EditComment(commentId uint64, comment string) {$/;"	f
+FeedGenerator	models/models.go	/^func FeedGenerator(userid uint64)[]Posts{$/;"	f
+FetchComments	controllers/commentsController.go	/^func FetchComments(w http.ResponseWriter, r *http.Request) {$/;"	f
+FetchComments	models/models.go	/^func FetchComments(postid uint64) []Comment {$/;"	f
+FindUser	models/models.go	/^func FindUser(username string) bool {$/;"	f
+GetCommentsByPostID	models/models.go	/^func GetCommentsByPostID(postid uint) []UsernameAndComment {$/;"	f
+GetCookieByName	controllers/usercontroller.go	/^func GetCookieByName(cookies []*http.Cookie, cookiename string) string {$/;"	f
+GetPostsByUserId	models/models.go	/^func GetPostsByUserId(userId uint64) []Posts {$/;"	f
+GetUserById	controllers/usercontroller.go	/^func GetUserById(w http.ResponseWriter, r *http.Request) {$/;"	f
+GetUserDetails	models/models.go	/^func GetUserDetails(username string) Users {$/;"	f
+GetallpostsbyUser	controllers/postcontrollers.go	/^func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {$/;"	f
+HandleRoutes	routers/router.go	/^func HandleRoutes(router *mux.Router) {$/;"	f
+JWTKEY	controllers/usercontroller.go	/^var JWTKEY = []byte(os.Getenv("JWT_KEY"))$/;"	v
+LikePost	models/models.go	/^func LikePost(postid uint64,userid uint64)bool{$/;"	f
+LoginUser	controllers/usercontroller.go	/^func LoginUser(w http.ResponseWriter, r *http.Request) {$/;"	f
+LoginUser	models/models.go	/^func LoginUser(username string) (string, bool, uint64) {$/;"	f
+ParseToken	controllers/commentsController.go	/^func ParseToken(token string) (uint64, bool) {$/;"	f
+PollMe	controllers/usercontroller.go	/^func PollMe(w http.ResponseWriter, r *http.Request) {$/;"	f
+PostById	models/models.go	/^func PostById(postid uint64) (Posts, string) {$/;"	f
+Posts	models/models.go	/^type Posts struct {$/;"	t
+RemoveComment	controllers/commentsController.go	/^func RemoveComment(w http.ResponseWriter, r *http.Request) {$/;"	f
+RemoveComment	models/models.go	/^func RemoveComment(commentId uint64) {$/;"	f
+SearchUsername	controllers/usercontroller.go	/^func SearchUsername(w http.ResponseWriter, r *http.Request) {$/;"	f
+Tokenexpirytime	controllers/usercontroller.go	/^var Tokenexpirytime = time.Now().Add(10 * time.Minute)$/;"	v
+UpdatePass	models/models.go	/^func UpdatePass(pass string, userid uint64) error {$/;"	f
+UpdatePost	models/models.go	/^func UpdatePost(postid uint64, post Posts) error {$/;"	f
+UpdateUserPass	controllers/usercontroller.go	/^func UpdateUserPass(w http.ResponseWriter, r *http.Request) {$/;"	f
+UserAndPost	models/models.go	/^type UserAndPost struct {$/;"	t
+UsernameAndComment	models/models.go	/^type UsernameAndComment struct {$/;"	t
+UsernameAndPost	models/models.go	/^type UsernameAndPost struct {$/;"	t
+Users	models/models.go	/^type Users struct {$/;"	t
+bycryptCost	controllers/usercontroller.go	/^var bycryptCost = 15$/;"	v
+categories	schema.sql	/^CREATE TABLE categories ($/;"	t
+categories.category_id	schema.sql	/^    category_id BIGSERIAL PRIMARY KEY,$/;"	F
+categories.category_name	schema.sql	/^    category_name VARCHAR(50) NOT NULL$/;"	F
+comment_replies	schema.sql	/^CREATE TABLE comment_replies($/;"	t
+comment_replies.comment_id	schema.sql	/^	comment_id INT REFERENCES post_comments(comment_id),$/;"	F
+comment_replies.createdAt	schema.sql	/^	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+comment_replies.reply_content	schema.sql	/^	reply_content TEXT,$/;"	F
+comment_replies.reply_id	schema.sql	/^	reply_id BIGSERIAL PRIMARY KEY,$/;"	F
+comment_replies.updatedAt	schema.sql	/^	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+comment_replies.user_id	schema.sql	/^	user_id INT REFERENCES users(user_id),$/;"	F
+controllers	controllers/commentsController.go	/^package controllers$/;"	p
+controllers	controllers/postcontrollers.go	/^package controllers$/;"	p
+controllers	controllers/usercontroller.go	/^package controllers$/;"	p
+db	models/models.go	/^var db *gorm.DB$/;"	v
+main	main.go	/^func main() {$/;"	f
+main	main.go	/^package main$/;"	p
+models	models/models.go	/^package models$/;"	p
+post_comments	schema.sql	/^CREATE TABLE post_comments($/;"	t
+post_comments.comment_content	schema.sql	/^	comment_content TEXT,$/;"	F
+post_comments.comment_id	schema.sql	/^	comment_id BIGSERIAL PRIMARY KEY,$/;"	F
+post_comments.createdAt	schema.sql	/^	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+post_comments.post_id	schema.sql	/^	post_id INT,$/;"	F
+post_comments.updatedAt	schema.sql	/^	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+post_comments.user_id	schema.sql	/^	user_id INT,$/;"	F
+post_likes	schema.sql	/^CREATE TABLE post_likes ($/;"	t
+post_likes.createdAt	schema.sql	/^	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+post_likes.like_id	schema.sql	/^    like_id BIGSERIAL PRIMARY KEY,$/;"	F
+post_likes.post_id	schema.sql	/^    post_id INT,$/;"	F
+post_likes.updatedAt	schema.sql	/^	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+post_likes.user_id	schema.sql	/^    user_id INT,$/;"	F
+posts	schema.sql	/^CREATE TABLE posts ($/;"	t
+posts.category_id	schema.sql	/^    category_id INT,$/;"	F
+posts.createdAt	schema.sql	/^	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+posts.num_likes	schema.sql	/^	num_likes INT DEFAULT 0,$/;"	F
+posts.post_content	schema.sql	/^	post_content TEXT,$/;"	F
+posts.post_id	schema.sql	/^    post_id BIGSERIAL PRIMARY KEY,$/;"	F
+posts.post_title	schema.sql	/^	post_title varchar(100) NOTNULL,$/;"	F
+posts.updatedAt	schema.sql	/^	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+posts.user_id	schema.sql	/^    user_id INT,$/;"	F
+routers	routers/router.go	/^package routers$/;"	p
+serverError	controllers/usercontroller.go	/^func serverError(w *http.ResponseWriter, err error) {$/;"	f
+users	schema.sql	/^CREATE TABLE users ($/;"	t
+users.createdAt	schema.sql	/^	createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,$/;"	F
+users.email	schema.sql	/^    email VARCHAR(100) NOT NULL UNIQUE,$/;"	F
+users.password	schema.sql	/^    password VARCHAR(100) NOT NULL,$/;"	F
+users.updatedAt	schema.sql	/^	updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP$/;"	F
+users.user_id	schema.sql	/^    user_id BIGSERIAL PRIMARY KEY,$/;"	F
+users.username	schema.sql	/^    username VARCHAR(50) NOT NULL,$/;"	F

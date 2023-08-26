@@ -75,10 +75,18 @@ func AddComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func FetchComments(w http.ResponseWriter, r *http.Request) {
+  //session token
+  rbody,err:=io.ReadAll(r.Body)
+  if err!=nil{
+    serverError(&w,err)
+    return
+  } 
+  var offset uint16
+  json.Unmarshal(rbody,offset)
 
 	var wg sync.WaitGroup
 
-	//1 postid
+	//1 
 	channel1 := make(chan uint64)
 	errChannel := make(chan bool)
 	wg.Add(1)
@@ -100,13 +108,13 @@ func FetchComments(w http.ResponseWriter, r *http.Request) {
 	}
 	postid := <-channel1
 
-	//2 fetch comments
+	//2 
 	channel2 := make(chan []byte)
 	err2 := make(chan bool)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		comments := models.FetchComments(postid)
+		comments := models.FetchComments(postid,offset)
 		parsedRes, err := json.Marshal(comments)
 		if err != nil {
 			fmt.Println(err)
