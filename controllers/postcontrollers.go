@@ -12,10 +12,11 @@ import (
 	"github.com/golang-jwt/jwt"
 	"github.com/suv-900/blog/models"
 )
+
+//TODO no jwt
 /*
 ->CRUD
 ->getbyid
-
 */
 func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {
 	var userId uint64
@@ -27,7 +28,7 @@ func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	posts := models.GetAllPostsByUserId(userId)
+	posts := models.GetPostsByUserId(userId)
 
 	parsedRes, err := json.Marshal(posts)
 	if err != nil {
@@ -44,100 +45,99 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 	var worker sync.WaitGroup
 
 	var authorid uint64
-  
-  //1
+
+	//1
 	worker.Add(1)
-  signal:=make(chan bool,1)
+	signal := make(chan bool, 1)
 	go func() {
 		defer worker.Done()
-    ok, p := TokenVerifier("userToken", r)
+		ok, p := TokenVerifier("userToken", r)
 		if ok {
 			authorid = p.id
-		} 
-		  signal<-true
-      fmt.Printf("Error while parsing token.")
-    
+		}
+		signal <- true
+		fmt.Printf("Error while parsing token.")
+
 	}()
-  if <-signal{
-    w.WriteHeader(500)
-    return
-  }
-  //2
-  worker.Add(1)
-  channel1:=make(chan []byte) 
-  signal1:=make(chan bool,1)
+	if <-signal {
+		w.WriteHeader(500)
+		return
+	}
+	//2
+	worker.Add(1)
+	channel1 := make(chan []byte)
+	signal1 := make(chan bool, 1)
+
 	go func() {
-  go func(){
-    defer worker.Done()
-    rbyte, err := io.ReadAll(r.Body)
-    if err != nil {
-      fmt.Printf("Error while reading body. %w",err)
-      singal1<-true
-      return
-      }
-    channel1<-rbyte
-  }()
-  if <-signal{
-    w.WriteHeader(500)
-    return
-  }
-  
-  rbyte:=<-channel1
+		defer worker.Done()
+		rbyte, err := io.ReadAll(r.Body)
+		if err != nil {
+			fmt.Printf("Error while reading body. %w", err)
+			signal1 <- true
+			return
+		}
+		channel1 <- rbyte
+	}()
+	if <-signal {
+		w.WriteHeader(500)
+		return
+	}
+
+	rbyte := <-channel1
 
 	var post models.Posts
-  err = json.Unmarshal(rbyte, &post)
+	err := json.Unmarshal(rbyte, &post)
 	if err != nil {
-   fmt.Printf("Error while unmarshalling. %w",err)
-   w.WriteHeader(500) 
-   return
+		fmt.Printf("Error while unmarshalling. %w", err)
+		w.WriteHeader(500)
+		return
 	}
 	post.Authorid = authorid
 
+	worker.Add(1)
+	channel3 := make(chan uint64)
+	go func() {
+		defer worker.Done()
+		p, err := models.CreatePost(post)
+		if err != nil {
+			fmt.Printf("Error while unmarshalling. %w", err)
+			signal <- true
+			return
+		}
+		channel3 <- p
+	}()
+	if <-signal {
+		w.WriteHeader(500)
+		return
+	}
+	postid := <-channel3
 
-  worker.Add(1)
-  channel3:=make(chan uint64)
-  go func(){
-    defer worker.Done()
-    p, err := models.CreatePost(post)
-    if err != nil {
-      fmt.Printf("Error while unmarshalling. %w",err)
-      signal<-true
-      return
-    }
-    channel3<-p
-  }()
-  if <-signal{
-    w.WriteHeader(500)
-    return
-  }
-  postid:=<-channel3
+	worker.Add(1)
+	channel4 := make(chan string, 1)
+	go func() {
+		defer worker.Done()
+		payload := CustomPayload{
+			postid,
+			jwt.StandardClaims{
+				ExpiresAt: Tokenexpirytime.Unix(),
+				Issuer:    "createpost H",
+			},
+		}
+		rawtoken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
+		ptoken, err := rawtoken.SignedString(JWTKEY)
+		if err != nil {
+			fmt.Printf("Error while creating token. %w", err)
+			signal <- true
+			return
+		}
+		channel4 <- ptoken
+	}()
+	if <-signal {
+		w.WriteHeader(500)
+		return
+	}
 
-  worker.Add(1)
-  channel4:=make(chan string,1)
-  go func(){
-    defer worker.Done()
-    payload := CustomPayload{
-      postid,
-      jwt.StandardClaims{
-        ExpiresAt: Tokenexpirytime.Unix(),
-        Issuer:    "createpost H",
-      },
-    }
-    rawtoken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-    ptoken, err := rawtoken.SignedString(JWTKEY)
-    if err != nil {
-      fmt.Printf("Error while creating token. %w",err)
-      signal<-true
-      return
-    }
-    channel4<-ptoken
-  }()
-  if <-signal{
-    w.WriteHeader(500) 
-    return
-  }
-  
-  posttoken:=<-channel4
+	posttoken := <-channel4
 
 	w.WriteHeader(200)
 	http.SetCookie(w, &http.Cookie{
@@ -333,28 +333,28 @@ func EchoSocket(w http.ResponseWriter, r *http.Request) {
 func createError() bool {
 	return true
 }
-func cleanup(){
-  fmt.Println("cleanup code.")
+func cleanup() {
+	fmt.Println("cleanup code.")
 }
 func CheckConcurr(w http.ResponseWriter, r *http.Request) {
-  defer cleanup()
+	defer cleanup()
 	var wg sync.WaitGroup
-  wg.Add(1)
-  errchannel:=make(chan bool,1)
-  go func() {
-    defer wg.Done()
-    defer cleanup()
+	wg.Add(1)
+	errchannel := make(chan bool, 1)
+	go func() {
+		defer wg.Done()
+		defer cleanup()
 		fmt.Println("inside thread")
-    if createError() {
-        errchannel<-true
-		    serverError(&w,nil)
-        return
-      }
+		if createError() {
+			errchannel <- true
+			serverError(&w, nil)
+			return
+		}
 	}()
-  wg.Wait()
-  if <-errchannel{
-    fmt.Println("returning thread err.")  
-    return
-  } 
-  fmt.Println("inside the function")
+	wg.Wait()
+	if <-errchannel {
+		fmt.Println("returning thread err.")
+		return
+	}
+	fmt.Println("inside the function")
 }

@@ -12,8 +12,6 @@ import (
 	//	_ "github.com/lib/pq"
 )
 
- 
-
 type Users struct {
 	ID        uint64    `gorm:"primaryKey"`
 	Username  string    `db:"username"`
@@ -45,10 +43,10 @@ type Comment struct {
 	Comment_id      uint64    `gorm:"primarykey"`
 	Post_id         uint64    `db:"post_id"`
 	User_id         uint64    `db:"user_id"`
-  Username        string    `db:"username"`
-  Comment_content string    `db:"comment_content"`
-  Comment_likes   uint64    `db:"comment_likes"`
-  CreatedAt       time.Time `db:"createdAt"`
+	Username        string    `db:"username"`
+	Comment_content string    `db:"comment_content"`
+	Comment_likes   uint64    `db:"comment_likes"`
+	CreatedAt       time.Time `db:"createdAt"`
 	UpdatedAt       time.Time `db:"updatedAt"`
 }
 
@@ -64,9 +62,9 @@ type UsernameAndPost struct {
 type UsernameAndComment struct {
 	UserID          uint64
 	Username        string
-  CommentID       uint64
-  Comment_content string
-  Comment_likes   uint64
+	CommentID       uint64
+	Comment_content string
+	Comment_likes   uint64
 }
 
 //root:Core@123@/blogweb?
@@ -86,10 +84,10 @@ func ConnectDB() error {
 }
 
 func CreateUser(user Users) (uint64, error) {
-
+	//TODO check the sql
 	var userid uint64
 	tx := db.Begin()
-	result := tx.Exec("INSERT INTO users (username,email,password,createdAt,updatedAt) VALUES(?,?,?,?,?)", user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
+	result := tx.Exec(`INSERT INTO users (username,email,password,createdAt,updatedAt) VALUES(?,?,?,?,?) RETURNING user_id`, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
 
 	if result.Error != nil {
 		fmt.Println(result.Error)
@@ -103,9 +101,10 @@ func CreateUser(user Users) (uint64, error) {
 }
 
 func FindUser(username string) bool {
-	var check bool
-	db.Raw("SELECT EXISTS ( SELECT 1 FROM users WHERE username=?  )", username).Scan(&check)
-  return check
+	fmt.Println("finduser db function")
+	var res int32
+	db.Raw("SELECT COUNT(*) FROM users WHERE username=?", username).Scan(&res)
+	return res != 0
 }
 
 func GetUserDetails(username string) Users {
@@ -117,29 +116,29 @@ func GetUserDetails(username string) Users {
 func LoginUser(username string) (string, bool, uint64) {
 	var dbpassword string
 	var userid uint64
-  var check bool
-	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)",username).Scan(&check)
-  if check{
-    db.Raw("SELECT (password,userid) FROM users WHERE username=?", username).Scan(&dbpassword).Scan(&userid)
-    return dbpassword,true,userid
-  }	
-	return "",false,0
+	var check bool
+	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
+	if check {
+		db.Raw("SELECT (password,userid) FROM users WHERE username=?", username).Scan(&dbpassword).Scan(&userid)
+		return dbpassword, true, userid
+	}
+	return "", false, 0
 }
 
 func DeleteUser(userid uint64) error {
 	//delete user and posts
 
-	r := db.Exec("DELETE FROM users WHERE userid=? ",userid)
+	r := db.Exec("DELETE FROM users WHERE userid=? ", userid)
 	if r.Error != nil {
 		fmt.Println(r.Error)
 		return r.Error
 	}
-  r=db.Exec("DELETE FROM posts WHERE authorid=?", userid)
+	r = db.Exec("DELETE FROM posts WHERE authorid=?", userid)
 	if r.Error != nil {
 		fmt.Println(r.Error)
 		return r.Error
 	}
-  return nil
+	return nil
 }
 
 func UpdatePass(pass string, userid uint64) error {
@@ -155,7 +154,6 @@ func UpdatePass(pass string, userid uint64) error {
 	}
 }
 
-
 /*
 func CheckCategory(categoryName string) (bool, uint) {
 	var categoryId uint
@@ -165,8 +163,6 @@ func CheckCategory(categoryName string) (bool, uint) {
 	}
 	return true, categoryId
 }*/
-
-
 
 // POST
 func CreatePost(post Posts) (uint64, error) {
@@ -217,19 +213,19 @@ func PostById(postid uint64) (Posts, string) {
 	return post, username
 }
 
-func FeedGenerator(userid uint64)[]Posts{
+func FeedGenerator(userid uint64) []Posts {
 
-  var categories []string
+	var categories []string
 
-  db.Raw(`SELECT c.category_name
+	db.Raw(`SELECT c.category_name
   FROM post_likes pl JOIN posts p ON pl.post_id=p.post_id
   JOIN categories c ON c.category_id=p.category_id
   WHERE pl.user_id=?
   GROUP BY c.category_name
-  LIMIT 5`,userid).Scan(&categories)
+  LIMIT 5`, userid).Scan(&categories)
 
-  var posts []Posts
-  db.Raw(` 
+	var posts []Posts
+	db.Raw(` 
   SELECT p.author_id,p.post_title,p.post_content,COUNT(pl.like_id) as likes_num
   FROM post_likes pl JOIN post p ON pl.post_id=p.post_id
   JOIN categories c ON c.category_id=p.category_id
@@ -237,77 +233,76 @@ func FeedGenerator(userid uint64)[]Posts{
   GROUP BY p.post_id,p.author_id,p.post_title,p.post_content
   ORDER BY likes_num DESC
   LIMIT 10
-  ` ,categories).Scan(&posts) 
-  return posts
+  `, categories).Scan(&posts)
+	return posts
 }
-
 
 // COMMENT
 
-func LikePost(postid uint64,userid uint64)bool{
-  var worker sync.WaitGroup
-  
-  worker.Add(1)
-  errchannel:=make(chan bool,1)
-  go func(){
-    defer worker.Done()
-    tx:=db.Begin()
-    r:=tx.Exec("INSERT INTO like_posts (user_id,post_id) VALUES(?,?)",userid,postid)
-    if r.Error!=nil{
-      tx.Rollback()
-      fmt.Println("Error occured while inserting like to like_posts %w",r.Error)
-      errchannel<-true
-      return
-    }
-    errchannel<-false
-  }()
+func LikePost(postid uint64, userid uint64) bool {
+	var worker sync.WaitGroup
 
-  if !(<-errchannel){
-    return true
-  }
-  
-  worker.Add(1)
-  go func(){
-    defer worker.Done() 
-    db.Exec("UPDATE posts SET num_likes=num_likes+1 WHERE post_id=?",postid)
-  }()
+	worker.Add(1)
+	errchannel := make(chan bool, 1)
+	go func() {
+		defer worker.Done()
+		tx := db.Begin()
+		r := tx.Exec("INSERT INTO like_posts (user_id,post_id) VALUES(?,?)", userid, postid)
+		if r.Error != nil {
+			tx.Rollback()
+			fmt.Println("Error occured while inserting like to like_posts %w", r.Error)
+			errchannel <- true
+			return
+		}
+		errchannel <- false
+	}()
 
-  worker.Wait()
-  return false 
+	if <-errchannel {
+		return true
+	}
+
+	worker.Add(1)
+	go func() {
+		defer worker.Done()
+		db.Exec("UPDATE posts SET num_likes=num_likes+1 WHERE post_id=?", postid)
+	}()
+
+	worker.Wait()
+	return false
 }
 
-func LikeAComment(commentid uint64){
-   db.Exec("UPDATE comments SET comment_likes=comment_likes+1 WHERE comment_id=?",commentid) 
+func LikeAComment(commentid uint64) {
+	db.Exec("UPDATE comments SET comment_likes=comment_likes+1 WHERE comment_id=?", commentid)
 }
 
-func DislikeAComment(commentid uint64){
-   db.Exec("UPDATE comments SET comment_likes=comment_likes-1 WHERE comment_id=?",commentid) 
+func DislikeAComment(commentid uint64) {
+	db.Exec("UPDATE comments SET comment_likes=comment_likes-1 WHERE comment_id=?", commentid)
 }
 
-func GetCommentsByPostID(postid uint64,offset uint32) []UsernameAndComment {
+func GetCommentsByPostID(postid uint64) []UsernameAndComment {
 	commentarr := make([]UsernameAndComment, 5)
 
 	var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			db.Raw(
-         ` SELECT (comment_id,user_id,username,comment_content) FROM post_comments WHERE post_id=? 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		db.Raw(
+			` SELECT (comment_id,user_id,username,comment_content) FROM post_comments WHERE post_id=? 
            GROUP BY comment_likes DESC 
            LIMIT 5 OFFSET
-        `, postid,offset).Scan(&commentarr)
-		}()
-/*
-		rawComment := UsernameAndComment{
-			UserID:          comment.User_id,
-			Username:        username,
-      CommentID:       comment.Comment_id,
-			Comment_content: comment.Comment_content,
-		}
-		commentarr = append(commentarr, rawComment)
-	}
-*/
-  fmt.Println(commentarr)
+        `, postid).Scan(&commentarr)
+	}()
+	/*
+	   		rawComment := UsernameAndComment{
+	   			UserID:          comment.User_id,
+	   			Username:        username,
+	         CommentID:       comment.Comment_id,
+	   			Comment_content: comment.Comment_content,
+	   		}
+	   		commentarr = append(commentarr, rawComment)
+	   	}
+	*/
+	fmt.Println(commentarr)
 	return commentarr
 }
 
@@ -333,25 +328,6 @@ func RemoveComment(commentId uint64) {
 	db.Exec("DELETE * FROM comments WHERE comment_id=?", commentId)
 }
 
-//image
-
-func AddProfilePic(userid uint64,image  ) {
+// image
+func AddProfilePic(userid uint64) {
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
