@@ -7,8 +7,7 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	//	_ "github.com/go-sql-driver/mysql"
-	//	"github.com/jmoiron/sqlx"
+	//"gorm.io/plugin/prometheus"
 	//	_ "github.com/lib/pq"
 )
 
@@ -16,7 +15,7 @@ type Users struct {
 	ID        uint64    `gorm:"primaryKey"`
 	Username  string    `db:"username"`
 	Email     string    `db:"email"`
-	Password  string    `db:"passwordhash"`
+	Password  string    `db:"password"`
 	CreatedAt time.Time `db:"createdAt"`
 	UpdatedAt time.Time `db:"updatedAt"`
 }
@@ -66,6 +65,10 @@ type UsernameAndComment struct {
 	Comment_content string
 	Comment_likes   uint64
 }
+type Passanduserid struct {
+	Password string `db:"password"`
+	ID       uint64 `db:"user_id"`
+}
 
 //root:Core@123@/blogweb?
 // postgres://core:12345678@localhost:5432/cloud
@@ -83,27 +86,41 @@ func ConnectDB() error {
 
 }
 
+/*
+	db.Use(prometheus.New(prometheus.Config{
+			DBName:          "cloud",
+			RefreshInterval: 10,
+			PushAddr:        "prometheus pusher address",
+			StartServer:     true,
+			HTTPServerPort:  8080,
+			MetricsCollector: []prometheus.MetricsCollector{
+				&prometheus.Postgres{
+					VariableNames: []string{"Thread running"},
+				},
+			},
+		}))
+*/
 func CreateUser(user Users) (uint64, error) {
 	//TODO check the sql
 	var userid uint64
 	tx := db.Begin()
-	result := tx.Exec(`INSERT INTO users (username,email,password,createdAt,updatedAt) VALUES(?,?,?,?,?) RETURNING user_id`, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
+	sql := "INSERT INTO users (username,email,password,createdat,updatedat) VALUES(?,?,?,?,?) RETURNING user_id"
+	result := tx.Raw(sql, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
 
-	if result.Error != nil {
-		fmt.Println(result.Error)
-		return 0, result.Error
-	} else {
+	if result.Error == nil {
 		tx.Commit()
 		return userid, nil
 	}
 
-	// db.Exec("SELECT userid FROM users WHERE username=?",user.Username).Scan()
+	fmt.Println(result.Error)
+	tx.Rollback()
+	return 0, result.Error
+
 }
 
 func FindUser(username string) bool {
-	fmt.Println("finduser db function")
 	var res int32
-	db.Raw("SELECT COUNT(*) FROM users WHERE username=?", username).Scan(&res)
+	db.Raw("SELECT COUNT(username) FROM users WHERE username=?", username).Scan(&res)
 	return res != 0
 }
 
@@ -114,13 +131,18 @@ func GetUserDetails(username string) Users {
 }
 
 func LoginUser(username string) (string, bool, uint64) {
-	var dbpassword string
-	var userid uint64
 	var check bool
+	//var dbpass string
+	//var userid uint64
+	var p Passanduserid
 	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
 	if check {
-		db.Raw("SELECT (password,userid) FROM users WHERE username=?", username).Scan(&dbpassword).Scan(&userid)
-		return dbpassword, true, userid
+		db.Raw("SELECT user_id,password FROM users WHERE username= ?", username).Scan(&p)
+
+		fmt.Println(p.Password)
+		fmt.Println(p.ID)
+		return p.Password, true, p.ID
+
 	}
 	return "", false, 0
 }
@@ -128,12 +150,12 @@ func LoginUser(username string) (string, bool, uint64) {
 func DeleteUser(userid uint64) error {
 	//delete user and posts
 
-	r := db.Exec("DELETE FROM users WHERE userid=? ", userid)
+	r := db.Raw("DELETE FROM users WHERE userid=? ", userid)
 	if r.Error != nil {
 		fmt.Println(r.Error)
 		return r.Error
 	}
-	r = db.Exec("DELETE FROM posts WHERE authorid=?", userid)
+	r = db.Raw("DELETE FROM posts WHERE authorid=?", userid)
 	if r.Error != nil {
 		fmt.Println(r.Error)
 		return r.Error

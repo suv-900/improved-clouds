@@ -29,6 +29,9 @@ func CheckServerHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 
 }
+
+// completed
+// TODO unit tests
 func CreateUser(w http.ResponseWriter, r *http.Request) {
 	rbyte, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -41,57 +44,79 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		serverError(&w, err)
 		return
 	}
-	var workergroup sync.WaitGroup
 
-	hashDone := make(chan bool, 1)
-	workergroup.Add(1)
+	pipe1 := make(chan bool, 1)
+	pipe2 := make(chan bool, 1)
+
 	go func() {
-		defer workergroup.Done()
-		fmt.Println("hashing password.")
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bycryptCost)
 		if err != nil {
-			hashDone <- false
+			pipe1 <- false
 			serverError(&w, err)
 			return
 		}
+
 		user.Password = string(hashedPassword)
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
 		fmt.Println(user)
-		hashDone <- true
-		fmt.Println("hashing password done.")
+		pipe1 <- true
 	}()
 
 	flag := make(chan uint, 1)
-	userDone := make(chan bool, 1)
 	tokenChannel := make(chan string, 1)
 
-	workergroup.Add(1)
 	go func() {
-		defer workergroup.Done()
-		if !<-hashDone {
+
+		if !<-pipe1 {
 			fmt.Println("hashingPassword stage unsuccessful.")
-			userDone <- false
+			pipe2 <- false
 			serverError(&w, nil)
 			return
 		}
 		//TODO add user with same name
-		if models.FindUser(user.Username) {
+		//TODO i dont think this call gets awaited/the goroutine waits for this call
+
+		//var userCreatewg sync.WaitGroup
+
+		var userFound bool
+
+		findUser := make(chan bool, 1)
+		go func() {
+			userFound = models.FindUser(user.Username)
+			findUser <- userFound
+		}()
+
+		if <-findUser {
 			flag <- 409
-			userDone <- false
+			pipe2 <- false
 			return
 		}
+		flag <- 0 //so that we dont listen on dead channel
 
-		fmt.Println("creating user.")
-		id, err := models.CreateUser(user)
+		//var id uint64
+		//var err error
+
+		//userCreatewg.Add(1)
+		createUserpipe := make(chan uint64, 1)
+		createUserErrorpipe := make(chan error, 1)
+
+		go func() {
+			//defer userCreatewg.Done()
+			id, err := models.CreateUser(user)
+			createUserpipe <- id
+			createUserErrorpipe <- err
+		}()
+		//userCreatewg.Wait()
+		id := <-createUserpipe
+		err = <-createUserErrorpipe
 		if err != nil {
 			fmt.Println("usercreation failed.")
 			serverError(&w, err)
-			userDone <- false
+			pipe2 <- false
 			return
 		}
 
-		fmt.Println("creating token.")
 		p := CustomPayload{
 			id,
 			jwt.StandardClaims{
@@ -103,27 +128,25 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		token, err := rawToken.SignedString(JWTKEY)
 		if err != nil {
 			serverError(&w, err)
-			userDone <- false
+			pipe2 <- false
 			return
 		}
 		tokenChannel <- token
-		userDone <- true
-		fmt.Println("user and token created.")
+		pipe2 <- true
 	}()
-	workergroup.Wait()
-	fmt.Println("main func.")
 	//TODO this flag channel is causing deadlock if there is no 409 sent from other goroutines fix CreateUser func
 	if c := <-flag; c == 409 {
 		//checkUsername failed conflict exists
 		fmt.Println("checkUsername failed conflict exists")
 		w.WriteHeader(409)
+	}
+
+	stageComplete := <-pipe2
+	if !stageComplete {
+		fmt.Println("stage unsuccessful.")
 		return
 	}
-	userStage := <-userDone
-	if !userStage {
-		fmt.Println("userCreate stage unsuccessful.")
-		return
-	}
+
 	token := <-tokenChannel
 	w.WriteHeader(200)
 	http.SetCookie(w, &http.Cookie{
@@ -142,23 +165,45 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var user models.Users
 	json.Unmarshal(rbytes, &user)
 
-	var workers sync.WaitGroup
+	pipe1 := make(chan bool, 1)
+	errorCode := make(chan uint64)
+	token := make(chan string)
 
-	errorCodechan := make(chan uint64)
-	tokenchan := make(chan string)
-	done := make(chan bool, 1)
-	workers.Add(1)
+	fmt.Println("main function 1")
 	go func() {
-		defer workers.Done()
-		dbpassword, exists, userid := models.LoginUser(user.Username)
+
+		fmt.Println("login gofunc")
+		pipe2 := make(chan int, 1)
+
+		var dbpassword string
+		var exists bool
+		var userid uint64
+		fmt.Println("loginuser gofunc")
+		go func() {
+			dbpassword, exists, userid = models.LoginUser(user.Username)
+			pipe2 <- 1
+		}()
+		<-pipe2
+
 		if !exists {
-			errorCodechan <- 404
+			errorCode <- 404
 			return
 		}
-		isOK := bcrypt.CompareHashAndPassword([]byte(dbpassword), []byte(user.Password))
+
+		var isOK error
+
+		fmt.Println("verifypass gofunc")
+		pipe3 := make(chan int, 1)
+		go func() {
+			isOK = bcrypt.CompareHashAndPassword([]byte(dbpassword), []byte(user.Password))
+			pipe3 <- 1
+		}()
+		<-pipe3
+
 		if isOK != nil {
 			//failure
-			errorCodechan <- 401
+			fmt.Println(isOK)
+			errorCode <- 401
 			return
 		}
 		payload := CustomPayload{
@@ -169,34 +214,34 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		Token := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-		token, err := Token.SignedString(JWTKEY)
+		t, err := Token.SignedString(JWTKEY)
 		if err != nil {
 			serverError(&w, err)
-			done <- false
+			pipe1 <- false
 			return
 		}
-		tokenchan <- token
-		done <- true
+		token <- t
+		pipe1 <- true
 	}()
-	workers.Wait()
-
-	errorCode := <-errorCodechan
-	if errorCode == 404 {
+	fmt.Println("main function 2")
+	if !<-pipe1 {
+		fmt.Println("stage failed.")
+		return
+	}
+	code := <-errorCode
+	if code == 404 {
 		w.WriteHeader(404)
 		return
 	}
-	if errorCode == 401 {
+	if code == 401 {
 		w.WriteHeader(401)
 		return
 	}
-	if !<-done {
-		fmt.Println("loginUser stage failed.")
-		return
-	}
-	token := <-tokenchan
+
+	t := <-token
 	http.SetCookie(w, &http.Cookie{
 		Name:    "userToken",
-		Value:   token,
+		Value:   t,
 		Expires: Tokenexpirytime,
 	})
 	w.WriteHeader(200)
@@ -256,13 +301,12 @@ func SearchUsername(w http.ResponseWriter, r *http.Request) {
 	var username string
 
 	json.Unmarshal(rbyte, &username)
-	found := make(chan bool)
+	found := make(chan bool, 1)
 	go func() {
 		res := models.FindUser(username)
 		found <- res
 	}()
 
-	fmt.Println("main function ")
 	if <-found {
 		w.WriteHeader(409)
 		return
@@ -396,7 +440,9 @@ func GetUserById(w http.ResponseWriter, r *http.Request) {
 
 // func parseReply(data any)
 func serverError(w *http.ResponseWriter, err error) {
-	fmt.Println(err)
+	if err != nil {
+		fmt.Println(err)
+	}
 	(*w).WriteHeader(500)
 }
 
