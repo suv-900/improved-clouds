@@ -280,6 +280,41 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(ts)
 }
 
+func AuthenticateToken(w *http.ResponseWriter, r *http.Request) (bool, uint64) {
+	var token string
+	var userid uint64
+	//TODO GET the token
+	token = GetCookieByName(r.Cookies(), "Authorization")
+	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(JWTKEY), nil
+	})
+	if err != nil {
+		fmt.Println("Token invalid")
+		(*w).WriteHeader(400)
+		fmt.Println(err)
+		return false, 0
+	}
+	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
+		userid = p.id
+		pipe1 := make(chan bool, 1)
+		go func() {
+			active := models.CheckUserLoggedIn(userid)
+			if !active {
+				pipe1 <- false
+				return
+			}
+			pipe1 <- true
+		}()
+		if !<-pipe1 {
+			fmt.Println("User is !active")
+			(*w).WriteHeader(401)
+			return false, 0
+		}
+		return true, userid
+	}
+	return false, 0
+}
+
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	reqbyte, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -500,40 +535,4 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	res, _ := json.Marshal(token)
 	w.Write(res)
-}
-
-func Verifytoken(w http.ResponseWriter, r *http.Request) {
-	var token string
-	rbyte, err := io.ReadAll(r.Body)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-	err = json.Unmarshal(rbyte, &token)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(JWTKEY), nil
-	})
-	if err != nil {
-		//jwt doesnt like the token(JWTKEY time)
-		serverError(&w, err)
-		fmt.Println("called 1")
-		return
-	}
-	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
-		res, err := json.Marshal(p)
-		if err != nil {
-			serverError(&w, err)
-			return
-		}
-		fmt.Println(res)
-		w.Write(res)
-		return
-	} else {
-		w.WriteHeader(401)
-		return
-	}
 }

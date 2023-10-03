@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	//"strconv"
-	"sync"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/suv-900/blog/models"
@@ -41,111 +41,59 @@ func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreatePost(w http.ResponseWriter, r *http.Request) {
-	//	cookie, _ := r.Cookie("usertoken")
-	var worker sync.WaitGroup
-
 	var authorid uint64
 
-	//1
-	worker.Add(1)
-	signal := make(chan bool, 1)
+	pipe1 := make(chan bool, 1)
 	go func() {
-		defer worker.Done()
-		ok, p := TokenVerifier("userToken", r)
+		fmt.Println("verifying token.")
+		ok, userid := AuthenticateToken(&w, r)
 		if ok {
-			authorid = p.id
+			authorid = userid
+			pipe1 <- true
+			return
 		}
-		signal <- true
+		pipe1 <- false
 		fmt.Printf("Error while parsing token.")
-
 	}()
-	if <-signal {
-		w.WriteHeader(500)
+	if !<-pipe1 {
 		return
 	}
-	//2
-	worker.Add(1)
-	channel1 := make(chan []byte)
-	signal1 := make(chan bool, 1)
+
+	pipe2 := make(chan bool, 1)
+	var post models.Posts
 
 	go func() {
-		defer worker.Done()
 		rbyte, err := io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Printf("Error while reading body. %w", err)
-			signal1 <- true
+			serverError(&w, err)
+			fmt.Println("error while reading request.")
+			pipe2 <- false
 			return
 		}
-		channel1 <- rbyte
-	}()
-	if <-signal {
-		w.WriteHeader(500)
-		return
-	}
-
-	rbyte := <-channel1
-
-	var post models.Posts
-	err := json.Unmarshal(rbyte, &post)
-	if err != nil {
-		fmt.Printf("Error while unmarshalling. %w", err)
-		w.WriteHeader(500)
-		return
-	}
-	post.Authorid = authorid
-
-	worker.Add(1)
-	channel3 := make(chan uint64)
-	go func() {
-		defer worker.Done()
-		p, err := models.CreatePost(post)
+		err = json.Unmarshal(rbyte, &post)
 		if err != nil {
-			fmt.Printf("Error while unmarshalling. %w", err)
-			signal <- true
+			serverError(&w, err)
+			fmt.Println("error while unmarshalling data")
+			pipe2 <- false
 			return
 		}
-		channel3 <- p
-	}()
-	if <-signal {
-		w.WriteHeader(500)
-		return
-	}
-	postid := <-channel3
+		post.Authorid = authorid
 
-	worker.Add(1)
-	channel4 := make(chan string, 1)
-	go func() {
-		defer worker.Done()
-		payload := CustomPayload{
-			postid,
-			jwt.StandardClaims{
-				ExpiresAt: Tokenexpirytime.Unix(),
-				Issuer:    "createpost H",
-			},
-		}
-		rawtoken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-		ptoken, err := rawtoken.SignedString(JWTKEY)
+		_, err = models.CreatePost(post)
 		if err != nil {
-			fmt.Printf("Error while creating token. %w", err)
-			signal <- true
+			serverError(&w, err)
+			fmt.Println("error while creating post")
+			pipe2 <- false
 			return
 		}
-		channel4 <- ptoken
+		pipe2 <- true
 	}()
-	if <-signal {
-		w.WriteHeader(500)
+
+	if !<-pipe2 {
+		fmt.Println("post creation failed")
 		return
 	}
-
-	posttoken := <-channel4
-
 	w.WriteHeader(200)
-	http.SetCookie(w, &http.Cookie{
-		Name:    "postToken",
-		Value:   posttoken,
-		Expires: Tokenexpirytime,
-	})
-
 	// var userPosts []models.Posts
 	// userPosts = models.CreatePost(post.Username, post)
 }
@@ -153,134 +101,143 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 func DeletePost(w http.ResponseWriter, r *http.Request) {
 	var postid uint64
 
-	ok, payload := TokenVerifier("postToken", r)
-	if ok {
-		postid = payload.id
-	} else {
-		w.WriteHeader(500)
+	pipe1 := make(chan bool, 1)
+	go func() {
+		fmt.Println("verifying token.")
+		ok, _ := AuthenticateToken(&w, r)
+		if ok {
+			pipe1 <- true
+			return
+		}
+		pipe1 <- false
+		fmt.Printf("Error while parsing token.")
+	}()
+	if !<-pipe1 {
 		return
 	}
 
-	err := models.DeletePost(postid)
-	if err != nil {
-		serverError(&w, err)
+	pipe2 := make(chan bool, 1)
+	go func() {
+		err := models.DeletePost(postid)
+		if err != nil {
+			serverError(&w, err)
+			pipe2 <- false
+			return
+		}
+		pipe2 <- true
+	}()
+	if !<-pipe2 {
+		fmt.Println("error while deleting post")
 		return
 	}
+	fmt.Println("post deleted succesfully")
 	w.WriteHeader(200)
 }
 
 func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	var postid uint64
 
-	ok, payload := TokenVerifier("postToken", r)
-	if ok {
-		postid = payload.id
-	} else {
-		w.WriteHeader(500)
+	pipe1 := make(chan bool, 1)
+	go func() {
+		fmt.Println("verifying token.")
+		ok, _ := AuthenticateToken(&w, r)
+		if ok {
+			pipe1 <- true
+			return
+		}
+		pipe1 <- false
+		fmt.Printf("Error while parsing token.")
+	}()
+	if !<-pipe1 {
 		return
 	}
 
-	rbyte, err := io.ReadAll(r.Body)
-	if err != nil {
-		serverError(&w, err)
+	pipe2 := make(chan bool, 1)
+
+	go func() {
+
+		rbyte, err := io.ReadAll(r.Body)
+		if err != nil {
+			pipe2 <- false
+			serverError(&w, err)
+			return
+		}
+
+		var post models.Posts
+		err = json.Unmarshal(rbyte, &post)
+		if err != nil {
+			pipe2 <- false
+			serverError(&w, err)
+			return
+		}
+
+		err = models.UpdatePost(postid, post)
+		if err != nil {
+			pipe2 <- false
+			serverError(&w, err)
+			return
+		}
+		pipe2 <- true
+
+	}()
+	if !<-pipe2 {
+		fmt.Println("error while updating post")
 		return
 	}
-
-	var post models.Posts
-	err = json.Unmarshal(rbyte, &post)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-
-	err = models.UpdatePost(postid, post)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-
 	w.WriteHeader(200)
 }
 
 func PostViewer(w http.ResponseWriter, r *http.Request) {
 
-	var wg sync.WaitGroup
-
-	rbody, err := io.ReadAll(r.Body)
+	var postid uint64
+	p := r.URL.Query().Get("postid")
+	if p == "" {
+		w.WriteHeader(400)
+		return
+	}
+	postid, err := strconv.ParseUint(p, 10, 64)
 	if err != nil {
 		serverError(&w, err)
 		return
 	}
 
-	var postid uint64
-	err = json.Unmarshal(rbody, &postid)
-
-	// p := r.URL.Query().Get("postid")
-	// if p == "" {
-	// 	w.WriteHeader(400)
-	// 	return
-	// }
-	// postid, err := strconv.ParseUint(p, 10, 64)
-	// if err != nil {
-	// 	serverError(&w, err)
-	// 	return
-	// }
-
-	wg.Add(1)
-	channel1 := make(chan string, 1)
-	channel2 := make(chan models.Posts)
+	pipe1 := make(chan int, 1)
+	var post models.Posts
+	var username string
 	go func() {
-		defer wg.Done()
-		p, u := models.PostById(postid)
-		channel1 <- u
-		channel2 <- p
+		post, username = models.PostById(postid)
+		pipe1 <- 1
 	}()
+	<-pipe1
 
-	post := <-channel2
-	username := <-channel1
-
-	channel3 := make(chan []byte)
-	errchannel := make(chan bool)
-	wg.Add(1)
+	pipe2 := make(chan bool, 1)
+	var parsedRes []byte
 	go func() {
-		defer wg.Done()
-		parsedRes, err := json.Marshal(models.UsernameAndPost{Username: username, Post: post})
+		parsedRes, err = json.Marshal(models.UsernameAndPost{Username: username, Post: post})
 		if err != nil {
-			fmt.Println(err)
-			errchannel <- true
+			serverError(&w, err)
+			pipe2 <- false
+			return
 		}
-		channel3 <- parsedRes
+		pipe2 <- true
 	}()
-	if <-errchannel {
-		w.WriteHeader(500)
+	if !<-pipe2 {
+		fmt.Println("Error occured while parsing post to json")
 		return
 	}
-	parsedRes := <-channel3
-
-	wg.Wait()
 
 	w.WriteHeader(200)
 	w.Write(parsedRes)
-	//1
-	// wg.Add(1)
-	// err1:=make(chan bool,1)
-	// go func(){
-	// 	defer wg.Done()
-	// 	ok,_:=TokenVerifier("userToken",r)
-	// 	if !ok{
-	// 		err1<-true
-	// 		return
-	// 	}
-	// }()
-	// if <-err1{
-	// 	w.WriteHeader(401)
-	// 	return
-	// }
 
 }
 
 func TokenVerifier(s string, r *http.Request) (bool, *CustomPayload) {
-	token, err := jwt.ParseWithClaims(GetCookieByName(r.Cookies(), s), &CustomPayload{}, nil)
+	t := GetCookieByName(r.Cookies(), s)
+	if t == "" {
+		fmt.Println("no cookie got.")
+		return false, nil
+	}
+	token, err := jwt.ParseWithClaims(t, &CustomPayload{}, nil)
 	if err != nil {
 		fmt.Println(err)
 		return false, nil
@@ -293,68 +250,13 @@ func TokenVerifier(s string, r *http.Request) (bool, *CustomPayload) {
 	}
 }
 
-func SendTokenLocal(w http.ResponseWriter, r *http.Request) {
-
-	payload := CustomPayload{
-		23,
-		jwt.StandardClaims{
-			ExpiresAt: Tokenexpirytime.Unix(),
-			Issuer:    "sex handler",
-		},
-	}
-	rawToken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-	token, err := rawToken.SignedString(JWTKEY)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-
-	fmt.Println(token)
-	parsedToken, err := json.Marshal(token)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-	w.WriteHeader(200)
-	w.Write(parsedToken)
-}
-
-func EchoSocket(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	parseVal, err := json.Marshal(token)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
-	w.WriteHeader(200)
-	w.Write(parseVal)
-}
-
-func createError() bool {
-	return true
-}
-func cleanup() {
-	fmt.Println("cleanup code.")
-}
-func CheckConcurr(w http.ResponseWriter, r *http.Request) {
-	defer cleanup()
-	var wg sync.WaitGroup
-	wg.Add(1)
-	errchannel := make(chan bool, 1)
-	go func() {
-		defer wg.Done()
-		defer cleanup()
-		fmt.Println("inside thread")
-		if createError() {
-			errchannel <- true
-			serverError(&w, nil)
-			return
+func GetCookieByName(cookies []*http.Cookie, cookiename string) string {
+	result := ""
+	for i := 0; i < len(cookies); i++ {
+		if cookies[i].Name == cookiename {
+			result += cookies[i].Value
+			break
 		}
-	}()
-	wg.Wait()
-	if <-errchannel {
-		fmt.Println("returning thread err.")
-		return
 	}
-	fmt.Println("inside the function")
+	return result
 }

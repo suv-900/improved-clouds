@@ -12,12 +12,13 @@ import (
 )
 
 type Users struct {
-	ID        uint64    `gorm:"primaryKey"`
-	Username  string    `db:"username"`
-	Email     string    `db:"email"`
-	Password  string    `db:"password"`
-	CreatedAt time.Time `db:"createdAt"`
-	UpdatedAt time.Time `db:"updatedAt"`
+	ID         uint64    `gorm:"primaryKey"`
+	Username   string    `db:"username"`
+	Email      string    `db:"email"`
+	Password   string    `db:"password"`
+	isLoggedIn bool      `db:"sessionValid"`
+	CreatedAt  time.Time `db:"createdAt"`
+	UpdatedAt  time.Time `db:"updatedAt"`
 }
 
 type Posts struct {
@@ -59,7 +60,7 @@ type UsernameAndPost struct {
 }
 
 type UsernameAndComment struct {
-	UserID          uint64
+	User_id         uint64
 	Username        string
 	CommentID       uint64
 	Comment_content string
@@ -67,7 +68,7 @@ type UsernameAndComment struct {
 }
 type Passanduserid struct {
 	Password string `db:"password"`
-	ID       uint64 `db:"user_id"`
+	User_id  uint64 `db:"user_id"`
 }
 
 //root:Core@123@/blogweb?
@@ -100,56 +101,135 @@ func ConnectDB() error {
 			},
 		}))
 */
-func CreateUser(user Users) (uint64, error) {
-	//TODO check the sql
-	var userid uint64
-	tx := db.Begin()
-	sql := "INSERT INTO users (username,email,password,createdat,updatedat) VALUES(?,?,?,?,?) RETURNING user_id"
-	result := tx.Raw(sql, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
-
-	if result.Error == nil {
-		tx.Commit()
-		return userid, nil
-	}
-
-	fmt.Println(result.Error)
-	tx.Rollback()
-	return 0, result.Error
-
-}
-
+//DONE
 func FindUser(username string) bool {
 	var res int32
 	db.Raw("SELECT COUNT(username) FROM users WHERE username=?", username).Scan(&res)
 	return res != 0
 }
 
+// DONE
+func CreateUser(user Users) (uint64, error) {
+	var userid uint64
+	var err error
+	pipe1 := make(chan bool, 1)
+	go func() {
+		pipe2 := make(chan bool, 1)
+		pipe3 := make(chan int, 1)
+
+		go func() {
+			tx := db.Begin()
+			sql := "INSERT INTO users (username,email,password,isLoggedIn,createdat,updatedat) VALUES(?,?,?,?,?) RETURNING user_id"
+			res := tx.Raw(sql, user.Username, user.Email, user.Password, true, user.CreatedAt, user.UpdatedAt).Scan(&userid)
+			if res.Error != nil {
+				tx.Rollback()
+				pipe2 <- false
+				err = res.Error
+				return
+			}
+			tx.Commit()
+			err = nil
+			pipe2 <- true
+		}()
+
+		if !<-pipe2 {
+			return
+		}
+
+		go func() {
+			db.Raw("UPDATE active FROM users WHERE user_id=?", true)
+			pipe3 <- 1
+		}()
+		<-pipe3
+
+		pipe1 <- true
+	}()
+	if !<-pipe1 {
+		return 0, err
+	}
+	return userid, nil
+}
+
+/*
+	func AddSessionToken(s string, userid uint64) bool {
+		tx := db.Begin()
+
+		pipe1 := make(chan bool, 1)
+		go func() {
+			r := tx.Raw("INSERT INTO users(sessionToken,sessionValid) VALUES(?,?) WHERE user_id=?", s, true, userid)
+			if r.Error != nil {
+				fmt.Println(r.Error)
+				pipe1 <- false
+				return
+			}
+			pipe1 <- true
+		}()
+
+		p := <-pipe1
+		return p
+
+}
+*/
+//DONE
+func LoginUser(username string) (string, bool, uint64) {
+	var check bool
+	var res Passanduserid
+	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
+	if check {
+		p := make(chan int, 1)
+		go func() {
+			db.Raw("SELECT user_id,password FROM users WHERE username= ?", username).Scan(&res)
+			p <- 1
+		}()
+		<-p
+		go func() {
+			db.Raw("UPDATE users(active) VALUES(?) WHERE user_id=?", true, res.User_id)
+			p <- 1
+		}()
+		<-p
+		return res.Password, true, res.User_id
+	}
+	return "", false, 0
+}
+
+// DONE
+func CheckUserLoggedIn(userid uint64) bool {
+	p := make(chan bool, 1)
+	go func() {
+		var active bool
+		db.Raw("SELECT active FROM users WHERE user_id=?", userid).Scan(&active)
+		p <- active
+	}()
+	res := <-p
+	return res
+}
+
+// DONE
+func LogOut(userid uint64) bool {
+	p := make(chan bool, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Raw("UPDATE users(active) VALUES(?) WHERE user_id=?", "", false, userid)
+		if r.Error != nil {
+			fmt.Println("error while logging out user")
+			p <- false
+		}
+		p <- true
+	}()
+	s := <-p
+	return s
+}
+
+// TODO
 func GetUserDetails(username string) Users {
 	var user Users
 	db.Raw("SELECT (user_id,username,userabout) FROM users WHERE username=?", username).Scan(&user)
 	return user
 }
 
-func LoginUser(username string) (string, bool, uint64) {
-	var check bool
-	//var dbpass string
-	//var userid uint64
-	var p Passanduserid
-	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
-	if check {
-		db.Raw("SELECT user_id,password FROM users WHERE username= ?", username).Scan(&p)
-
-		fmt.Println(p.Password)
-		fmt.Println(p.ID)
-		return p.Password, true, p.ID
-
-	}
-	return "", false, 0
-}
-
+// DONE
 func DeleteUser(userid uint64) error {
 	//delete user and posts
-
 	r := db.Raw("DELETE FROM users WHERE userid=? ", userid)
 	if r.Error != nil {
 		fmt.Println(r.Error)
@@ -189,16 +269,27 @@ func CheckCategory(categoryName string) (bool, uint) {
 // POST
 func CreatePost(post Posts) (uint64, error) {
 	var postid uint64
-	tx := db.Begin()
-	result := tx.Exec("INSERT INTO posts (post_title,post_tldr,post_content,authorid,post_likes,post_category) VALUES(?,?,?,?,?,?)", post.Post_title, post.Post_tldr, post.Post_content, post.Authorid, 0, post.Post_category).Scan(&postid)
-	if result.Error != nil {
-		tx.Rollback()
-		return 0, result.Error
-	} else {
-		tx.Commit()
-		return postid, nil
-	}
+	pipe := make(chan bool, 1)
+	var err error
 
+	go func() {
+		tx := db.Begin()
+		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes,post_category) VALUES(?,?,?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Authorid, 0, post.Post_category).Scan(&postid)
+		if result.Error != nil {
+			tx.Rollback()
+			err = result.Error
+			postid = 0
+			pipe <- false
+			return
+		} else {
+			tx.Commit()
+			err = nil
+			pipe <- true
+			return
+		}
+	}()
+	<-pipe
+	return postid, err
 }
 func DeletePost(postid uint64) error {
 
