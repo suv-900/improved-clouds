@@ -14,11 +14,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-//TODO hashing is taking too long
-
-var bycryptCost = 15
+// TODO token blacklist
+var sessionKey = "dasd0871hudsliuqnbvc872832madsa1207badp1831ajlq32103avkwqe871181"
+var stokenlength = 10
+var bycryptCost = 3
 var JWTKEY = []byte(os.Getenv("JWT_KEY"))
-var Tokenexpirytime = time.Now().Add(10 * time.Minute)
+var Tokenexpirytime = time.Now().Add(10 * time.Second)
 
 type CustomPayload struct {
 	id uint64
@@ -157,6 +158,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// completed
 func LoginUser(w http.ResponseWriter, r *http.Request) {
 	rbytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -166,19 +168,15 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(rbytes, &user)
 
 	pipe1 := make(chan bool, 1)
-	errorCode := make(chan uint64)
-	token := make(chan string)
-
-	fmt.Println("main function 1")
+	errorCode := make(chan int, 1)
+	token := make(chan string, 1)
 	go func() {
 
-		fmt.Println("login gofunc")
 		pipe2 := make(chan int, 1)
 
 		var dbpassword string
 		var exists bool
 		var userid uint64
-		fmt.Println("loginuser gofunc")
 		go func() {
 			dbpassword, exists, userid = models.LoginUser(user.Username)
 			pipe2 <- 1
@@ -192,20 +190,17 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 
 		var isOK error
 
-		fmt.Println("verifypass gofunc")
 		pipe3 := make(chan int, 1)
 		go func() {
 			isOK = bcrypt.CompareHashAndPassword([]byte(dbpassword), []byte(user.Password))
 			pipe3 <- 1
 		}()
 		<-pipe3
-
 		if isOK != nil {
-			//failure
-			fmt.Println(isOK)
 			errorCode <- 401
 			return
 		}
+
 		payload := CustomPayload{
 			userid,
 			jwt.StandardClaims{
@@ -218,34 +213,71 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			serverError(&w, err)
 			pipe1 <- false
+			errorCode <- 0
 			return
 		}
+		/*
+			var stoken string
+			pipe4 := make(chan bool, 1)
+			go func() {
+				s := make([]byte, stokenlength)
+				for i := range s {
+					s[i] = sessionKey[rand.Intn(len(sessionKey))]
+				}
+				ok := models.AddSessionToken(string(s), userid)
+				if !ok {
+					pipe4 <- false
+					fmt.Println("adding session token failed.")
+					return
+				}
+				stoken = string(s)
+				pipe4 <- true
+			}()
+			if !<-pipe4 {
+				fmt.Println("adding sessionToken stage failed.")
+				serverError(&w, nil)
+				pipe1 <- false
+				errorCode <- 0
+				return
+			}*/
+		//stokenchan <- stoken
 		token <- t
 		pipe1 <- true
+		errorCode <- 0
 	}()
-	fmt.Println("main function 2")
-	if !<-pipe1 {
-		fmt.Println("stage failed.")
-		return
-	}
+
 	code := <-errorCode
 	if code == 404 {
 		w.WriteHeader(404)
+		fmt.Println("404")
 		return
 	}
 	if code == 401 {
 		w.WriteHeader(401)
+		fmt.Println("401")
+		return
+	}
+	if !<-pipe1 {
+		fmt.Println("stage failed.")
+		return
+	}
+	t := <-token
+	/*
+		http.SetCookie(w, &http.Cookie{
+			Name:    "token",
+			Value:   t,
+			Expires: Tokenexpirytime,
+		})
+	*/
+
+	ts, err := json.Marshal(t)
+	if err != nil {
+		serverError(&w, err)
 		return
 	}
 
-	t := <-token
-	http.SetCookie(w, &http.Cookie{
-		Name:    "userToken",
-		Value:   t,
-		Expires: Tokenexpirytime,
-	})
 	w.WriteHeader(200)
-
+	w.Write(ts)
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -446,19 +478,62 @@ func serverError(w *http.ResponseWriter, err error) {
 	(*w).WriteHeader(500)
 }
 
-func GetCookieByName(cookies []*http.Cookie, cookiename string) string {
-	result := ""
-	for i := 0; i < len(cookies); i++ {
-		if cookies[i].Name == cookiename {
-			result += cookies[i].Value
-			break
-		}
-	}
-	return result
-}
-
 /*
 func GenerateSessionId() int64 {
 
 }
 */
+
+func CreateToken(w http.ResponseWriter, r *http.Request) {
+	p := CustomPayload{
+		1,
+		jwt.StandardClaims{
+			ExpiresAt: Tokenexpirytime.Unix(),
+			Issuer:    "createUser handler",
+		},
+	}
+	rawToken := jwt.NewWithClaims(jwt.SigningMethodHS256, p)
+	token, err := rawToken.SignedString(JWTKEY)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	res, _ := json.Marshal(token)
+	w.Write(res)
+}
+
+func Verifytoken(w http.ResponseWriter, r *http.Request) {
+	var token string
+	rbyte, err := io.ReadAll(r.Body)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	err = json.Unmarshal(rbyte, &token)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(JWTKEY), nil
+	})
+	if err != nil {
+		//jwt doesnt like the token(JWTKEY time)
+		serverError(&w, err)
+		fmt.Println("called 1")
+		return
+	}
+	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
+		res, err := json.Marshal(p)
+		if err != nil {
+			serverError(&w, err)
+			return
+		}
+		fmt.Println(res)
+		w.Write(res)
+		return
+	} else {
+		w.WriteHeader(401)
+		return
+	}
+}
