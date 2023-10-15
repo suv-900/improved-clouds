@@ -19,7 +19,7 @@ var sessionKey = "dasd0871hudsliuqnbvc872832madsa1207badp1831ajlq32103avkwqe8711
 var stokenlength = 10
 var bycryptCost = 3
 var JWTKEY = []byte(os.Getenv("JWT_KEY"))
-var Tokenexpirytime = time.Now().Add(10 * time.Second)
+var Tokenexpirytime = time.Now().Add(20 * time.Minute)
 
 type CustomPayload struct {
 	id uint64
@@ -280,11 +280,13 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(ts)
 }
 
-func AuthenticateToken(w *http.ResponseWriter, r *http.Request) (bool, uint64) {
+func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bool, uint64) {
 	var token string
 	var userid uint64
 	//TODO GET the token
-	token = GetCookieByName(r.Cookies(), "Authorization")
+	token = r.Header.Get("Authorization")
+	//token = GetCookieByName(r.Cookies(), "Authorization")
+	fmt.Println(token)
 	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(JWTKEY), nil
 	})

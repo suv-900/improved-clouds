@@ -1,11 +1,13 @@
 package controllers
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	//"strconv"
 
@@ -46,7 +48,7 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 	pipe1 := make(chan bool, 1)
 	go func() {
 		fmt.Println("verifying token.")
-		ok, userid := AuthenticateToken(&w, r)
+		ok, userid := AuthenticateTokenAndSendUserID(&w, r)
 		if ok {
 			authorid = userid
 			pipe1 <- true
@@ -56,12 +58,14 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Error while parsing token.")
 	}()
 	if !<-pipe1 {
+		//error codes are getting managed by AuthHandler
 		return
 	}
 
 	pipe2 := make(chan bool, 1)
 	var post models.Posts
 
+	var postid uint64
 	go func() {
 		rbyte, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -78,8 +82,8 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		post.Authorid = authorid
-
-		_, err = models.CreatePost(post)
+		post.CreatedAt = time.Now()
+		postid, err = models.CreatePost(post)
 		if err != nil {
 			serverError(&w, err)
 			fmt.Println("error while creating post")
@@ -94,6 +98,9 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, postid)
+	w.Write(b)
 	// var userPosts []models.Posts
 	// userPosts = models.CreatePost(post.Username, post)
 }
@@ -104,7 +111,7 @@ func DeletePost(w http.ResponseWriter, r *http.Request) {
 	pipe1 := make(chan bool, 1)
 	go func() {
 		fmt.Println("verifying token.")
-		ok, _ := AuthenticateToken(&w, r)
+		ok, _ := AuthenticateTokenAndSendUserID(&w, r)
 		if ok {
 			pipe1 <- true
 			return
@@ -140,7 +147,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	pipe1 := make(chan bool, 1)
 	go func() {
 		fmt.Println("verifying token.")
-		ok, _ := AuthenticateToken(&w, r)
+		ok, _ := AuthenticateTokenAndSendUserID(&w, r)
 		if ok {
 			pipe1 <- true
 			return
@@ -187,7 +194,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-func PostViewer(w http.ResponseWriter, r *http.Request) {
+func GetPostByID(w http.ResponseWriter, r *http.Request) {
 
 	var postid uint64
 	p := r.URL.Query().Get("postid")

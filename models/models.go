@@ -12,31 +12,22 @@ import (
 )
 
 type Users struct {
-	ID         uint64    `gorm:"primaryKey"`
-	Username   string    `db:"username"`
-	Email      string    `db:"email"`
-	Password   string    `db:"password"`
-	isLoggedIn bool      `db:"sessionValid"`
-	CreatedAt  time.Time `db:"createdAt"`
-	UpdatedAt  time.Time `db:"updatedAt"`
+	ID        uint64    `gorm:"primaryKey"`
+	Username  string    `db:"username"`
+	Email     string    `db:"email"`
+	Password  string    `db:"password"`
+	CreatedAt time.Time `db:"createdAt"`
+	UpdatedAt time.Time `db:"updatedAt"`
 }
 
 type Posts struct {
-	ID            uint64    `gorm:"primaryKey"`
-	Authorid      uint64    `db:"authorid"`
-	Post_title    string    `db:"post_title"`
-	Post_tldr     string    `db:"post_tldr"`
-	Post_content  string    `db:"post_content"`
-	Post_likes    uint      `db:"post_likes"`
-	Post_category string    `db:"post_category"`
-	CreatedAt     time.Time `db:"createdAt"`
-	UpdatedAt     time.Time `db:"updatedAt"`
-}
-
-type Category struct {
-	CategoryId    uint64 `gorm:"primarykey"`
-	Category_Name string `db:"category_name"`
-	Post_count    uint   `db:"post_count"`
+	ID           uint64    `gorm:"primaryKey"`
+	Authorid     uint64    `db:"authorid"`
+	Post_title   string    `db:"post_title"`
+	Post_content string    `db:"post_content"`
+	Post_likes   uint      `db:"post_likes"`
+	CreatedAt    time.Time `db:"createdAt"`
+	UpdatedAt    time.Time `db:"updatedAt"`
 }
 
 type Comment struct {
@@ -119,8 +110,8 @@ func CreateUser(user Users) (uint64, error) {
 
 		go func() {
 			tx := db.Begin()
-			sql := "INSERT INTO users (username,email,password,isLoggedIn,createdat,updatedat) VALUES(?,?,?,?,?) RETURNING user_id"
-			res := tx.Raw(sql, user.Username, user.Email, user.Password, true, user.CreatedAt, user.UpdatedAt).Scan(&userid)
+			sql := "INSERT INTO users (username,email,password,createdat,updatedat) VALUES(?,?,?,?,?) RETURNING user_id"
+			res := tx.Raw(sql, user.Username, user.Email, user.Password, user.CreatedAt, user.UpdatedAt).Scan(&userid)
 			if res.Error != nil {
 				tx.Rollback()
 				pipe2 <- false
@@ -174,7 +165,14 @@ func CreateUser(user Users) (uint64, error) {
 func LoginUser(username string) (string, bool, uint64) {
 	var check bool
 	var res Passanduserid
-	db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
+
+	a := make(chan int, 1)
+
+	go func() {
+		db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE username=?)", username).Scan(&check)
+		a <- 1
+	}()
+	<-a
 	if check {
 		p := make(chan int, 1)
 		go func() {
@@ -182,17 +180,25 @@ func LoginUser(username string) (string, bool, uint64) {
 			p <- 1
 		}()
 		<-p
+		q := make(chan int, 1)
 		go func() {
-			db.Raw("UPDATE users(active) VALUES(?) WHERE user_id=?", true, res.User_id)
-			p <- 1
+			tx := db.Begin()
+			r := tx.Raw("UPDATE users SET active=? WHERE user_id=?", true, res.User_id)
+			if r.Error != nil {
+				fmt.Println(r.Error)
+				tx.Rollback()
+				return
+			}
+			tx.Commit()
+			q <- 1
 		}()
-		<-p
+		<-q
 		return res.Password, true, res.User_id
 	}
 	return "", false, 0
 }
 
-// DONE
+// checks if user is logged in
 func CheckUserLoggedIn(userid uint64) bool {
 	p := make(chan bool, 1)
 	go func() {
@@ -266,7 +272,7 @@ func CheckCategory(categoryName string) (bool, uint) {
 	return true, categoryId
 }*/
 
-// POST
+// creates a post
 func CreatePost(post Posts) (uint64, error) {
 	var postid uint64
 	pipe := make(chan bool, 1)
@@ -274,7 +280,7 @@ func CreatePost(post Posts) (uint64, error) {
 
 	go func() {
 		tx := db.Begin()
-		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes,post_category) VALUES(?,?,?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Authorid, 0, post.Post_category).Scan(&postid)
+		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes) VALUES(?,?,?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Authorid, 0).Scan(&postid)
 		if result.Error != nil {
 			tx.Rollback()
 			err = result.Error
@@ -291,6 +297,8 @@ func CreatePost(post Posts) (uint64, error) {
 	<-pipe
 	return postid, err
 }
+
+// deletes a post
 func DeletePost(postid uint64) error {
 
 	r := db.Exec("DELETE FROM posts WHERE postid=?", postid)
