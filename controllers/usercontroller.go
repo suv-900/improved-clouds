@@ -22,7 +22,7 @@ var JWTKEY = []byte(os.Getenv("JWT_KEY"))
 var Tokenexpirytime = time.Now().Add(20 * time.Minute)
 
 type CustomPayload struct {
-	id uint64
+	ID uint64 `json:"id"`
 	jwt.StandardClaims
 }
 
@@ -118,14 +118,14 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		p := CustomPayload{
-			id,
-			jwt.StandardClaims{
+		payload := CustomPayload{
+			ID: id,
+			StandardClaims: jwt.StandardClaims{
 				ExpiresAt: Tokenexpirytime.Unix(),
 				Issuer:    "createUser handler",
 			},
 		}
-		rawToken := jwt.NewWithClaims(jwt.SigningMethodHS256, p)
+		rawToken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
 		token, err := rawToken.SignedString(JWTKEY)
 		if err != nil {
 			serverError(&w, err)
@@ -176,9 +176,9 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 
 		var dbpassword string
 		var exists bool
-		var userid uint64
+		var id uint64
 		go func() {
-			dbpassword, exists, userid = models.LoginUser(user.Username)
+			dbpassword, exists, id = models.LoginUser(user.Username)
 			pipe2 <- 1
 		}()
 		<-pipe2
@@ -200,15 +200,16 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 			errorCode <- 401
 			return
 		}
-
+		fmt.Println("id ", id)
 		payload := CustomPayload{
-			userid,
-			jwt.StandardClaims{
+			ID: id,
+			StandardClaims: jwt.StandardClaims{
 				ExpiresAt: Tokenexpirytime.Unix(),
-				Issuer:    "loginuser handler",
+				Issuer:    "loginHandler",
 			},
 		}
 		Token := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
+
 		t, err := Token.SignedString(JWTKEY)
 		if err != nil {
 			serverError(&w, err)
@@ -269,7 +270,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 			Expires: Tokenexpirytime,
 		})
 	*/
-
+	fmt.Println("token ", token)
 	ts, err := json.Marshal(t)
 	if err != nil {
 		serverError(&w, err)
@@ -296,8 +297,9 @@ func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bo
 		fmt.Println(err)
 		return false, 0
 	}
+
 	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
-		userid = p.id
+		userid = p.ID
 		pipe1 := make(chan bool, 1)
 		go func() {
 			active := models.CheckUserLoggedIn(userid)
@@ -337,7 +339,7 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if claims, ok := token.Claims.(*CustomPayload); ok && token.Valid {
-			channel1 <- claims.id
+			channel1 <- claims.ID
 		}
 	}()
 	userid := <-channel1
@@ -413,7 +415,7 @@ func UpdateUserPass(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if payload, ok := token.Claims.(*CustomPayload); ok && token.Valid {
-			channel1 <- payload.id
+			channel1 <- payload.ID
 		}
 	}()
 	if <-errorChannel != nil {

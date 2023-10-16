@@ -16,6 +16,7 @@ type Users struct {
 	Username  string    `db:"username"`
 	Email     string    `db:"email"`
 	Password  string    `db:"password"`
+	Active    bool      `db:"active"`
 	CreatedAt time.Time `db:"createdAt"`
 	UpdatedAt time.Time `db:"updatedAt"`
 }
@@ -182,14 +183,9 @@ func LoginUser(username string) (string, bool, uint64) {
 		<-p
 		q := make(chan int, 1)
 		go func() {
-			tx := db.Begin()
-			r := tx.Raw("UPDATE users SET active=? WHERE user_id=?", true, res.User_id)
-			if r.Error != nil {
-				fmt.Println(r.Error)
-				tx.Rollback()
-				return
-			}
-			tx.Commit()
+			r := db.Exec("UPDATE users SET active= ? WHERE user_id= ?", true, res.User_id)
+			fmt.Println(r.Error)
+			fmt.Println("query run")
 			q <- 1
 		}()
 		<-q
@@ -215,7 +211,7 @@ func LogOut(userid uint64) bool {
 	p := make(chan bool, 1)
 	go func() {
 		tx := db.Begin()
-		r := tx.Raw("UPDATE users(active) VALUES(?) WHERE user_id=?", "", false, userid)
+		r := tx.Exec("UPDATE users SET active=? WHERE user_id=?", false, userid)
 		if r.Error != nil {
 			fmt.Println("error while logging out user")
 			p <- false
@@ -280,7 +276,7 @@ func CreatePost(post Posts) (uint64, error) {
 
 	go func() {
 		tx := db.Begin()
-		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes) VALUES(?,?,?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Authorid, 0).Scan(&postid)
+		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes) VALUES(?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Authorid, 0).Scan(&postid)
 		if result.Error != nil {
 			tx.Rollback()
 			err = result.Error

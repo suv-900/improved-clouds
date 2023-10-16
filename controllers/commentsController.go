@@ -27,14 +27,14 @@ func AddComment(w http.ResponseWriter, r *http.Request) {
 			errorChannel <- true
 			return
 		}
-		channel1 <- p.id
+		channel1 <- p.ID
 
 		ok, p = TokenVerifier("postToken", r)
 		if !ok {
 			errorChannel <- true
 			return
 		}
-		channel1 <- p.id
+		channel1 <- p.ID
 	}()
 
 	if <-errorChannel {
@@ -98,7 +98,7 @@ func FetchComments(w http.ResponseWriter, r *http.Request) {
 			errChannel <- true
 			return
 		}
-		channel1 <- p.id
+		channel1 <- p.ID
 		errChannel <- false
 	}()
 
@@ -194,7 +194,7 @@ func ParseToken(token string) (uint64, bool) {
 		fmt.Println("Error while parsing token.", err)
 	}
 	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
-		return p.id, true
+		return p.ID, true
 	}
 	return 0, false
 }

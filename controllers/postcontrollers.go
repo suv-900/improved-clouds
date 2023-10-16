@@ -24,7 +24,7 @@ func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {
 	var userId uint64
 	ok, p := TokenVerifier("userToken", r)
 	if ok {
-		userId = p.id
+		userId = p.ID
 	} else {
 		w.WriteHeader(401)
 		return
@@ -83,6 +83,7 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		}
 		post.Authorid = authorid
 		post.CreatedAt = time.Now()
+		post.UpdatedAt = time.Now()
 		postid, err = models.CreatePost(post)
 		if err != nil {
 			serverError(&w, err)
