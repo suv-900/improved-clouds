@@ -200,7 +200,6 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 			errorCode <- 401
 			return
 		}
-		fmt.Println("id ", id)
 		payload := CustomPayload{
 			ID: id,
 			StandardClaims: jwt.StandardClaims{
@@ -270,7 +269,6 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 			Expires: Tokenexpirytime,
 		})
 	*/
-	fmt.Println("token ", token)
 	ts, err := json.Marshal(t)
 	if err != nil {
 		serverError(&w, err)
@@ -287,7 +285,6 @@ func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bo
 	//TODO GET the token
 	token = r.Header.Get("Authorization")
 	//token = GetCookieByName(r.Cookies(), "Authorization")
-	fmt.Println(token)
 	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(JWTKEY), nil
 	})
@@ -300,66 +297,80 @@ func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bo
 
 	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
 		userid = p.ID
-		pipe1 := make(chan bool, 1)
-		go func() {
-			active := models.CheckUserLoggedIn(userid)
-			if !active {
-				pipe1 <- false
-				return
-			}
-			pipe1 <- true
-		}()
-		if !<-pipe1 {
-			fmt.Println("User is !active")
-			(*w).WriteHeader(401)
-			return false, 0
-		}
+		/*
+			pipe1 := make(chan bool, 1)
+			go func() {
+
+				active := models.CheckUserLoggedIn(userid)
+				if !active {
+					pipe1 <- false
+					return
+				}
+				pipe1 <- true
+			}()
+			if !<-pipe1 {
+				fmt.Println("User is !active")
+				(*w).WriteHeader(401)
+				return false, 0
+			}*/
 		return true, userid
 	}
 	return false, 0
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
-	reqbyte, err := io.ReadAll(r.Body)
-	if err != nil {
-		serverError(&w, err)
+	var userid uint64
+	a := make(chan bool, 1)
+	go func() {
+		ok, b := AuthenticateTokenAndSendUserID(&w, r)
+		if ok {
+			userid = b
+			a <- true
+		}
+		a <- false
+
+	}()
+	if !<-a {
+		//error codes handled by authhandler
 		return
 	}
-	var username string
-	json.Unmarshal(reqbyte, &username)
-
-	var workers sync.WaitGroup
-	channel1 := make(chan uint64, 1)
-	workers.Add(1)
-	go func() {
-		defer workers.Done()
-		token, err := jwt.ParseWithClaims(GetCookieByName(r.Cookies(), "userToken"), &CustomPayload{}, nil)
-		if err != nil {
-			fmt.Println(err)
+	/*
+		var userExists bool
+		c := make(chan int, 1)
+		go func() {
+			userExists = models.CheckUserExists(userid)
+			c <- 1
+		}()
+		<-c
+		if !userExists {
+			w.WriteHeader(400)
 			return
 		}
-		if claims, ok := token.Claims.(*CustomPayload); ok && token.Valid {
-			channel1 <- claims.ID
-		}
-	}()
-	userid := <-channel1
-
-	channel2 := make(chan error)
-	workers.Add(1)
+	*/
+	var err error
+	err = nil
+	b := make(chan int, 1)
 	go func() {
-		defer workers.Done()
-		channel2 <- models.DeleteUser(userid)
 
+		err = models.DeleteUser(userid)
+		if err != nil {
+			b <- 1
+			return
+		}
+		//err = models.DeleteUser(userid)
+		/*
+			if err != nil {
+				b <- 1
+				return
+			}*/
+		b <- 1
 	}()
-	err = <-channel2
+	<-b
 	if err != nil {
-		fmt.Println(err)
 		w.WriteHeader(500)
+		fmt.Println(err)
 		return
 	}
-
-	workers.Wait()
-
 	w.WriteHeader(200)
 
 }

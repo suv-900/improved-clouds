@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -185,7 +186,6 @@ func LoginUser(username string) (string, bool, uint64) {
 		go func() {
 			r := db.Exec("UPDATE users SET active= ? WHERE user_id= ?", true, res.User_id)
 			fmt.Println(r.Error)
-			fmt.Println("query run")
 			q <- 1
 		}()
 		<-q
@@ -208,18 +208,21 @@ func CheckUserLoggedIn(userid uint64) bool {
 
 // DONE
 func LogOut(userid uint64) bool {
-	p := make(chan bool, 1)
+	p := make(chan int, 1)
+	var ok bool
 	go func() {
 		tx := db.Begin()
 		r := tx.Exec("UPDATE users SET active=? WHERE user_id=?", false, userid)
 		if r.Error != nil {
 			fmt.Println("error while logging out user")
-			p <- false
+			p <- 1
+			ok = false
 		}
-		p <- true
+		ok = true
+		p <- 1
 	}()
-	s := <-p
-	return s
+	<-p
+	return ok
 }
 
 // TODO
@@ -231,18 +234,79 @@ func GetUserDetails(username string) Users {
 
 // DONE
 func DeleteUser(userid uint64) error {
-	//delete user and posts
-	r := db.Raw("DELETE FROM users WHERE userid=? ", userid)
-	if r.Error != nil {
-		fmt.Println(r.Error)
-		return r.Error
+	var err error
+	err = nil
+	//comments can be deleted or no
+	a := make(chan int, 1)
+	go func() {
+		r := db.Exec("DELETE FROM comments WHERE user_id=?", userid)
+		if r.Error != nil {
+			fmt.Println(r.Error)
+			err = r.Error
+			a <- 1
+			return
+		}
+		a <- 1
+	}()
+	<-a
+	if err != nil {
+		return err
 	}
-	r = db.Raw("DELETE FROM posts WHERE authorid=?", userid)
-	if r.Error != nil {
-		fmt.Println(r.Error)
-		return r.Error
+
+	b := make(chan int, 1)
+	go func() {
+		r := db.Exec("DELETE FROM posts WHERE author_id=?", userid)
+		if r.Error != nil {
+			fmt.Println(r.Error)
+			err = r.Error
+			b <- 1
+			return
+		}
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		return err
 	}
-	return nil
+
+	c := make(chan int, 1)
+	go func() {
+		r := db.Exec("DELETE FROM users WHERE user_id=?", userid)
+		if r.Error != nil {
+			fmt.Println(r.Error)
+			err = r.Error
+			c <- 1
+			return
+		}
+		c <- 1
+	}()
+	<-c
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func DeleteUser2(userid uint64) {
+	a := make(chan int, 1)
+	go func() {
+		db.Exec("DELETE FROM comments WHERE user_id=?", userid)
+		a <- 1
+	}()
+	<-a
+	b := make(chan int, 1)
+	go func() {
+		db.Exec("DELETE FROM posts WHERE author_id=?", userid)
+		b <- 1
+	}()
+	<-b
+	c := make(chan int, 1)
+	go func() {
+		db.Exec("DELETE FROM users WHERE user_id=?", userid)
+		c <- 1
+	}()
+	<-c
 }
 
 func UpdatePass(pass string, userid uint64) error {
@@ -273,6 +337,19 @@ func CreatePost(post Posts) (uint64, error) {
 	var postid uint64
 	pipe := make(chan bool, 1)
 	var err error
+	var userexists bool
+
+	a := make(chan int, 1)
+	go func() {
+		r := CheckUserExists(post.Authorid)
+		userexists = r
+		a <- 1
+	}()
+	<-a
+	if !userexists {
+		fmt.Println("User doesnt exists.Post Creation Failed")
+		return 0, errors.New("user doesnt exists.Post Creation Failed")
+	}
 
 	go func() {
 		tx := db.Begin()
@@ -292,6 +369,17 @@ func CreatePost(post Posts) (uint64, error) {
 	}()
 	<-pipe
 	return postid, err
+}
+
+func CheckUserExists(userid uint64) bool {
+	a := make(chan int, 1)
+	var exists bool
+	go func() {
+		db.Raw("SELECT EXISTS (SELECT 1 FROM users WHERE user_id=?)", userid).Scan(&exists)
+		a <- 1
+	}()
+	<-a
+	return exists
 }
 
 // deletes a post

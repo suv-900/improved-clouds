@@ -13,7 +13,7 @@ func HandleRoutes(router *mux.Router) {
 	router.HandleFunc("/serverstatus", controllers.CheckServerHealth).Methods("GET")
 	router.HandleFunc("/createpost", controllers.CreatePost).Methods("POST")
 	router.HandleFunc("/authtoken", controllers.CreatePost).Methods("POST")
+	router.HandleFunc("/deleteuser", controllers.DeleteUser).Methods("DELETE")
+
 	// router.HandleFunc("/viewpost", controllers.PostViewer).Methods("GET")
-	// router.HandleFunc("/pollme", controllers.PollMe).Methods("GET")
-	// router.HandleFunc("/checkcon", controllers.CheckConcurr).Methods("GET")
 }
