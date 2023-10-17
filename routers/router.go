@@ -15,5 +15,5 @@ func HandleRoutes(router *mux.Router) {
 	router.HandleFunc("/authtoken", controllers.CreatePost).Methods("POST")
 	router.HandleFunc("/deleteuser", controllers.DeleteUser).Methods("DELETE")
 
-	// router.HandleFunc("/viewpost", controllers.PostViewer).Methods("GET")
+	router.HandleFunc("/viewpost/{id:[0-9]+}", controllers.GetPostByID).Methods("GET")
 }

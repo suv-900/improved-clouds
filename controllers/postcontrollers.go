@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	//"strconv"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/mux"
 	"github.com/suv-900/blog/models"
 )
 
@@ -81,7 +81,7 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 			pipe2 <- false
 			return
 		}
-		post.Authorid = authorid
+		post.Author_id = authorid
 		post.CreatedAt = time.Now()
 		post.UpdatedAt = time.Now()
 		postid, err = models.CreatePost(post)
@@ -99,9 +99,15 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, postid)
-	w.Write(b)
+
+	parsedres, err := json.Marshal(postid)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	//b := make([]byte, 8)
+	//binary.LittleEndian.PutUint64(b, postid)
+	w.Write(parsedres)
 	// var userPosts []models.Posts
 	// userPosts = models.CreatePost(post.Username, post)
 }
@@ -195,33 +201,44 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
+// sends post username and top 5 comments
 func GetPostByID(w http.ResponseWriter, r *http.Request) {
-
+	fmt.Println("got req")
+	return
+	var postidstr string
 	var postid uint64
-	p := r.URL.Query().Get("postid")
-	if p == "" {
-		w.WriteHeader(400)
-		return
-	}
-	postid, err := strconv.ParseUint(p, 10, 64)
+	vars := mux.Vars(r)
+	postidstr = vars["id"]
+	fmt.Println(postidstr)
+	postid, err := strconv.ParseUint(postidstr, 10, 64)
 	if err != nil {
 		serverError(&w, err)
 		return
 	}
-
-	pipe1 := make(chan int, 1)
+	fmt.Println(postid)
+	a := make(chan int, 1)
 	var post models.Posts
 	var username string
 	go func() {
 		post, username = models.PostById(postid)
-		pipe1 <- 1
+		a <- 1
 	}()
-	<-pipe1
+	<-a
+
+	b := make(chan int, 1)
+	var comments []models.UsernameAndComment
+	go func() {
+		comments = models.GetCommentsByPostID(postid)
+		b <- 1
+	}()
+	<-b
 
 	pipe2 := make(chan bool, 1)
 	var parsedRes []byte
+	finalRes := models.PostUsernameComments{Username: username, Post: post, Comments: comments}
+	fmt.Println(finalRes)
 	go func() {
-		parsedRes, err = json.Marshal(models.UsernameAndPost{Username: username, Post: post})
+		parsedRes, err = json.Marshal(finalRes)
 		if err != nil {
 			serverError(&w, err)
 			pipe2 <- false
@@ -233,7 +250,6 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Error occured while parsing post to json")
 		return
 	}
-
 	w.WriteHeader(200)
 	w.Write(parsedRes)
 
