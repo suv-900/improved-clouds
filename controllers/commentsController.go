@@ -4,72 +4,81 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 
 	"net/http"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/mux"
 	"github.com/suv-900/blog/models"
 )
 
 func AddComment(w http.ResponseWriter, r *http.Request) {
-
-	var wg sync.WaitGroup
-
-	//1 verify token
-	channel1 := make(chan uint64, 2)
-	errorChannel := make(chan bool)
-	wg.Add(1)
+	var userid uint64
+	var username string
+	a := make(chan bool, 1)
 	go func() {
-		defer wg.Done()
-		ok, p := TokenVerifier("userToken", r)
-		if !ok {
-			errorChannel <- true
+		ok, u := AuthenticateTokenAndSendUserID(&w, r)
+		if ok {
+			userid = u
+			a <- true
 			return
 		}
-		channel1 <- p.ID
-
-		ok, p = TokenVerifier("postToken", r)
-		if !ok {
-			errorChannel <- true
-			return
-		}
-		channel1 <- p.ID
+		fmt.Println("Token error")
+		a <- false
 	}()
-
-	if <-errorChannel {
-		w.WriteHeader(401)
+	if !<-a {
 		return
 	}
 
-	userid := <-channel1
-	postid := <-channel1
+	d := make(chan int, 1)
+	go func() {
+		username = models.GetUsername(userid)
+		d <- 1
+	}()
+	<-d
 
-	rbody, err := io.ReadAll(r.Body)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
+	var postid uint64
 	var comment string
-	json.Unmarshal(rbody, &comment)
-
-	//2 add comment
-	wg.Add(1)
+	b := make(chan bool, 1)
 	go func() {
-		defer wg.Done()
-		err := models.AddComment(postid, userid, comment)
+		rbody, err := io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Println(err)
-			errorChannel <- true
+			serverError(&w, err)
+			b <- false
 			return
 		}
+		json.Unmarshal(rbody, &comment)
+		vars := mux.Vars(r)
+		postidstr := vars["id"]
+		fmt.Println(postidstr)
+		postid, err = strconv.ParseUint(postidstr, 10, 64)
+		if err != nil {
+			serverError(&w, err)
+			b <- false
+			return
+		}
+		b <- true
 	}()
-	if <-errorChannel {
-		serverError(&w, nil)
+	if !<-b {
+		return
+	}
+
+	c := make(chan bool, 1)
+	go func() {
+		err := models.AddComment(postid, userid, username, comment)
+		if err != nil {
+			serverError(&w, err)
+			c <- false
+			return
+		}
+		c <- true
+	}()
+	if !<-c {
 		return
 	}
 	//not sending back comment string use in frontend
-	wg.Wait()
 
 	w.WriteHeader(200)
 }
@@ -114,7 +123,7 @@ func FetchComments(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		comments := models.GetCommentsByPostID(postid)
+		comments := models.GetAllCommentsByPostID(postid)
 		parsedRes, err := json.Marshal(comments)
 		if err != nil {
 			fmt.Println(err)
@@ -197,4 +206,94 @@ func ParseToken(token string) (uint64, bool) {
 		return p.ID, true
 	}
 	return 0, false
+}
+
+func LikeComment(w http.ResponseWriter, r *http.Request) {
+	var ok bool
+	a := make(chan int, 1)
+	go func() {
+		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
+		if !ok {
+			a <- 1
+			return
+		}
+		a <- 1
+	}()
+	<-a
+	if !ok {
+		w.WriteHeader(400)
+		return
+	}
+
+	var commentID uint64
+	var err error
+	b := make(chan int, 1)
+	go func() {
+		rbody, err := io.ReadAll(r.Body)
+		if err != nil {
+			b <- 1
+			return
+		}
+		json.Unmarshal(rbody, &commentID)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	c := make(chan int, 1)
+	go func() {
+		models.LikeAComment(commentID)
+		c <- 1
+	}()
+	<-c
+
+	w.WriteHeader(200)
+}
+
+func DislikeComment(w http.ResponseWriter, r *http.Request) {
+	var ok bool
+	a := make(chan int, 1)
+	go func() {
+		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
+		if !ok {
+			a <- 1
+			return
+		}
+		a <- 1
+	}()
+	<-a
+	if !ok {
+		w.WriteHeader(400)
+		return
+	}
+
+	var commentID uint64
+	var err error
+	b := make(chan int, 1)
+	go func() {
+		rbody, err := io.ReadAll(r.Body)
+		if err != nil {
+			b <- 1
+			return
+		}
+		json.Unmarshal(rbody, &commentID)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	c := make(chan int, 1)
+	go func() {
+		models.DislikeAComment(commentID)
+		c <- 1
+	}()
+	<-c
+
+	w.WriteHeader(200)
 }

@@ -32,6 +32,12 @@ func FindUser(username string) bool {
 	return res != 0
 }
 
+func GetUsername(userid uint64) string {
+	var u string
+	db.Raw("SELECT username FROM users WHERE user_id=?", userid).Scan(&u)
+	return u
+}
+
 // DONE
 func CreateUser(user Users) (uint64, error) {
 	var userid uint64

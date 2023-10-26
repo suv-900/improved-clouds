@@ -25,7 +25,7 @@ func CreatePost(post Posts) (uint64, error) {
 
 	go func() {
 		tx := db.Begin()
-		result := tx.Raw("INSERT INTO posts (post_title,post_content,author_id,post_likes) VALUES(?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Author_id, 0).Scan(&postid)
+		result := tx.Exec("INSERT INTO posts (post_title,post_content,author_id,post_likes) VALUES(?,?,?,?) RETURNING post_id", post.Post_title, post.Post_content, post.Author_id, 0).Scan(&postid)
 		if result.Error != nil {
 			tx.Rollback()
 			err = result.Error
@@ -76,10 +76,15 @@ func PostById(postid uint64) (Posts, string) {
 	var username string
 	db.Raw("SELECT post_title,post_content,author_id FROM posts WHERE post_id=?", postid).Scan(&post)
 	db.Raw("SELECT username FROM users WHERE user_id=?", post.Author_id).Scan(&username)
-	fmt.Println(post)
 	return post, username
 }
 
+func LikePostByID(postid uint64) {
+	db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
+}
+func DislikePostByID(postid uint64) {
+	db.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
+}
 func FeedGenerator(userid uint64) []Posts {
 
 	var categories []string

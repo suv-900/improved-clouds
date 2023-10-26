@@ -47,7 +47,6 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 
 	pipe1 := make(chan bool, 1)
 	go func() {
-		fmt.Println("verifying token.")
 		ok, userid := AuthenticateTokenAndSendUserID(&w, r)
 		if ok {
 			authorid = userid
@@ -203,19 +202,15 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 
 // sends post username and top 5 comments
 func GetPostByID(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("got req")
-	return
 	var postidstr string
 	var postid uint64
 	vars := mux.Vars(r)
 	postidstr = vars["id"]
-	fmt.Println(postidstr)
 	postid, err := strconv.ParseUint(postidstr, 10, 64)
 	if err != nil {
 		serverError(&w, err)
 		return
 	}
-	fmt.Println(postid)
 	a := make(chan int, 1)
 	var post models.Posts
 	var username string
@@ -228,7 +223,7 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	b := make(chan int, 1)
 	var comments []models.UsernameAndComment
 	go func() {
-		comments = models.GetCommentsByPostID(postid)
+		comments = models.GetAllCommentsByPostID(postid)
 		b <- 1
 	}()
 	<-b
@@ -236,7 +231,6 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	pipe2 := make(chan bool, 1)
 	var parsedRes []byte
 	finalRes := models.PostUsernameComments{Username: username, Post: post, Comments: comments}
-	fmt.Println(finalRes)
 	go func() {
 		parsedRes, err = json.Marshal(finalRes)
 		if err != nil {
@@ -253,6 +247,92 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 	w.Write(parsedRes)
 
+}
+
+func LikePost(w http.ResponseWriter, r *http.Request) {
+	var ok bool
+	var postid uint64
+	var err error
+	a := make(chan int, 1)
+	go func() {
+		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
+		if !ok {
+			a <- 1
+			return
+		}
+
+		vars := mux.Vars(r)
+		postidstr := vars["postid"]
+		postid, err = strconv.ParseUint(postidstr, 10, 64)
+		if err != nil {
+			serverError(&w, err)
+			a <- 1
+			return
+		}
+
+		a <- 1
+	}()
+	<-a
+	if !ok {
+		w.WriteHeader(400)
+		return
+	}
+	if err != nil {
+		return
+	}
+
+	//save user prefrence
+	b := make(chan int, 1)
+	go func() {
+		models.LikePostByID(postid)
+		b <- 1
+	}()
+	<-b
+
+	w.WriteHeader(200)
+}
+
+func DislikePost(w http.ResponseWriter, r *http.Request) {
+	var ok bool
+	var postid uint64
+	var err error
+	a := make(chan int, 1)
+	go func() {
+		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
+		if !ok {
+			a <- 1
+			return
+		}
+
+		vars := mux.Vars(r)
+		postidstr := vars["postid"]
+		postid, err = strconv.ParseUint(postidstr, 10, 64)
+		if err != nil {
+			serverError(&w, err)
+			a <- 1
+			return
+		}
+
+		a <- 1
+	}()
+	<-a
+	if !ok {
+		w.WriteHeader(400)
+		return
+	}
+	if err != nil {
+		return
+	}
+
+	//save user prefrence
+	b := make(chan int, 1)
+	go func() {
+		models.DislikePostByID(postid)
+		b <- 1
+	}()
+	<-b
+
+	w.WriteHeader(200)
 }
 
 func TokenVerifier(s string, r *http.Request) (bool, *CustomPayload) {

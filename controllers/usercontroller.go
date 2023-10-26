@@ -60,7 +60,6 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		user.Password = string(hashedPassword)
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
-		fmt.Println(user)
 		pipe1 <- true
 	}()
 
@@ -149,13 +148,13 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := <-tokenChannel
+	t, err := json.Marshal(token)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 	w.WriteHeader(200)
-	http.SetCookie(w, &http.Cookie{
-		Name:    "userToken",
-		Value:   token,
-		Expires: Tokenexpirytime,
-	})
-
+	w.Write(t)
 }
 
 // completed
@@ -282,7 +281,6 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bool, uint64) {
 	var token string
 	var userid uint64
-	//TODO GET the token
 	token = r.Header.Get("Authorization")
 	//token = GetCookieByName(r.Cookies(), "Authorization")
 	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {

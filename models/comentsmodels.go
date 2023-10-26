@@ -37,6 +37,7 @@ func LikePost(postid uint64, userid uint64) bool {
 	return false
 }
 
+// call responsively
 func LikeAComment(commentid uint64) {
 	db.Exec("UPDATE comments SET comment_likes=comment_likes+1 WHERE comment_id=?", commentid)
 }
@@ -45,16 +46,18 @@ func DislikeAComment(commentid uint64) {
 	db.Exec("UPDATE comments SET comment_likes=comment_likes-1 WHERE comment_id=?", commentid)
 }
 
-func GetCommentsByPostID(postid uint64) []UsernameAndComment {
-	commentarr := make([]UsernameAndComment, 5)
+func Get5CommentsByPostID(postid uint64) []UsernameAndComment {
+	//commentarr := make([]UsernameAndComment, 5)
+	commentsvec := []UsernameAndComment{}
 	//TODO OFFSET to hold a bar for next comments
 	a := make(chan int, 1)
 	go func() {
-		sql := "SELECT (comment_id,user_id,username,comment_content) FROM comments WHERE post_id=? ORDER BY comment_likes DESC LIMIT 5 "
-		db.Raw(sql, postid).Scan(&commentarr)
+		sql := "SELECT comment_id,user_id,username,comment_content FROM comments WHERE post_id=? ORDER BY comment_likes DESC LIMIT 5 "
+		db.Raw(sql, postid).Scan(&commentsvec)
 		a <- 1
 	}()
 	<-a
+	return commentsvec
 	/*
 	   		rawComment := UsernameAndComment{
 	   			UserID:          comment.User_id,
@@ -65,21 +68,50 @@ func GetCommentsByPostID(postid uint64) []UsernameAndComment {
 	   		commentarr = append(commentarr, rawComment)
 	   	}
 	*/
-	return commentarr
 }
 
-func AddComment(postid uint64, userid uint64, comment string) error {
+func GetAllCommentsByPostID(postid uint64) []UsernameAndComment {
+	//commentarr := make([]UsernameAndComment, 5)
+	commentsvec := []UsernameAndComment{}
+	//TODO OFFSET to hold a bar for next comments
+	a := make(chan int, 1)
+	go func() {
+		sql := "SELECT comment_id,user_id,username,comment_content,comment_likes FROM comments WHERE post_id=? ORDER BY comment_likes DESC "
+		db.Raw(sql, postid).Scan(&commentsvec)
+		a <- 1
+	}()
+	<-a
+	return commentsvec
+	/*
+	   		rawComment := UsernameAndComment{
+	   			UserID:          comment.User_id,
+	   			Username:        username,
+	         CommentID:       comment.Comment_id,
+	   			Comment_content: comment.Comment_content,
+	   		}
+	   		commentarr = append(commentarr, rawComment)
+	   	}
+	*/
+}
 
-	tx := db.Begin()
-	r := tx.Exec("INSERT INTO post_comments (user_id,post_id,comment_content) VALUES(?,?,?)", userid, postid, comment)
-	if r.Error != nil {
-		tx.Rollback()
-		return r.Error
-	}
-	return nil
-	//var commentid uint
-	//db.Raw("SELECT comment_id FROM comments WHERE post_id=? user_id=? comment_content=?", postid, userid, comment).Scan(&commentid)
-	//return commentid, nil
+func AddComment(postid uint64, userid uint64, username string, comment string) error {
+	var err error
+	err = nil
+	a := make(chan int, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Exec("INSERT INTO comments (user_id,post_id,username,comment_content,comment_likes) VALUES(?,?,?,?,?) ", userid, postid, username, comment, 0)
+		if r.Error != nil {
+			tx.Rollback()
+			err = r.Error
+			a <- 1
+		} else {
+			tx.Commit()
+			a <- 1
+		}
+	}()
+	<-a
+	return err
 }
 
 func EditComment(commentId uint64, comment string) {
