@@ -19,7 +19,7 @@ var sessionKey = "dasd0871hudsliuqnbvc872832madsa1207badp1831ajlq32103avkwqe8711
 var stokenlength = 10
 var bycryptCost = 3
 var JWTKEY = []byte(os.Getenv("JWT_KEY"))
-var Tokenexpirytime = time.Now().Add(20 * time.Minute)
+var Tokenexpirytime = time.Now().Add(60 * time.Minute)
 
 type CustomPayload struct {
 	ID uint64 `json:"id"`
@@ -34,6 +34,8 @@ func CheckServerHealth(w http.ResponseWriter, r *http.Request) {
 // completed
 // TODO unit tests
 func CreateUser(w http.ResponseWriter, r *http.Request) {
+	var err error
+
 	rbyte, err := io.ReadAll(r.Body)
 	if err != nil {
 		serverError(&w, err)
@@ -46,108 +48,77 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pipe1 := make(chan bool, 1)
-	pipe2 := make(chan bool, 1)
+	var userFound bool
+	c := make(chan int, 1)
+	go func() {
+		userFound = models.FindUser(user.Username)
+		c <- 1
+	}()
+	<-c
 
+	if userFound {
+		w.WriteHeader(409)
+		return
+	}
+
+	a := make(chan int, 1)
 	go func() {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bycryptCost)
 		if err != nil {
-			pipe1 <- false
-			serverError(&w, err)
+			a <- 1
 			return
 		}
 
 		user.Password = string(hashedPassword)
 		user.CreatedAt = time.Now()
 		user.UpdatedAt = time.Now()
-		pipe1 <- true
+		a <- 1
 	}()
+	<-a
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 
-	flag := make(chan uint, 1)
-	tokenChannel := make(chan string, 1)
+	b := make(chan int, 1)
+	var userid uint64
+	go func() {
+		//defer userCreatewg.Done()
+		userid, err = models.CreateUser(user)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 
+	d := make(chan int, 1)
+	var token string
 	go func() {
 
-		if !<-pipe1 {
-			fmt.Println("hashingPassword stage unsuccessful.")
-			pipe2 <- false
-			serverError(&w, nil)
-			return
-		}
 		//TODO add user with same name
 		//TODO i dont think this call gets awaited/the goroutine waits for this call
 
-		//var userCreatewg sync.WaitGroup
-
-		var userFound bool
-
-		findUser := make(chan bool, 1)
-		go func() {
-			userFound = models.FindUser(user.Username)
-			findUser <- userFound
-		}()
-
-		if <-findUser {
-			flag <- 409
-			pipe2 <- false
-			return
-		}
-		flag <- 0 //so that we dont listen on dead channel
-
-		//var id uint64
 		//var err error
 
-		//userCreatewg.Add(1)
-		createUserpipe := make(chan uint64, 1)
-		createUserErrorpipe := make(chan error, 1)
-
-		go func() {
-			//defer userCreatewg.Done()
-			id, err := models.CreateUser(user)
-			createUserpipe <- id
-			createUserErrorpipe <- err
-		}()
-		//userCreatewg.Wait()
-		id := <-createUserpipe
-		err = <-createUserErrorpipe
-		if err != nil {
-			fmt.Println("usercreation failed.")
-			serverError(&w, err)
-			pipe2 <- false
-			return
-		}
-
 		payload := CustomPayload{
-			ID: id,
+			ID: userid,
 			StandardClaims: jwt.StandardClaims{
 				ExpiresAt: Tokenexpirytime.Unix(),
 				Issuer:    "createUser handler",
 			},
 		}
 		rawToken := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-		token, err := rawToken.SignedString(JWTKEY)
-		if err != nil {
-			serverError(&w, err)
-			pipe2 <- false
-			return
-		}
-		tokenChannel <- token
-		pipe2 <- true
+		token, err = rawToken.SignedString(JWTKEY)
+		d <- 1
 	}()
-	//TODO this flag channel is causing deadlock if there is no 409 sent from other goroutines fix CreateUser func
-	if c := <-flag; c == 409 {
-		//checkUsername failed conflict exists
-		fmt.Println("checkUsername failed conflict exists")
-		w.WriteHeader(409)
-	}
-
-	stageComplete := <-pipe2
-	if !stageComplete {
-		fmt.Println("stage unsuccessful.")
+	<-d
+	if err != nil {
+		serverError(&w, err)
 		return
 	}
 
-	token := <-tokenChannel
 	t, err := json.Marshal(token)
 	if err != nil {
 		serverError(&w, err)
@@ -166,108 +137,49 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var user models.Users
 	json.Unmarshal(rbytes, &user)
 
-	pipe1 := make(chan bool, 1)
-	errorCode := make(chan int, 1)
-	token := make(chan string, 1)
+	var dbpassword string
+	var exists bool
+	var id uint64
+	a := make(chan int, 1)
 	go func() {
-
-		pipe2 := make(chan int, 1)
-
-		var dbpassword string
-		var exists bool
-		var id uint64
-		go func() {
-			dbpassword, exists, id = models.LoginUser(user.Username)
-			pipe2 <- 1
-		}()
-		<-pipe2
-
-		if !exists {
-			errorCode <- 404
-			return
-		}
-
-		var isOK error
-
-		pipe3 := make(chan int, 1)
-		go func() {
-			isOK = bcrypt.CompareHashAndPassword([]byte(dbpassword), []byte(user.Password))
-			pipe3 <- 1
-		}()
-		<-pipe3
-		if isOK != nil {
-			errorCode <- 401
-			return
-		}
-		payload := CustomPayload{
-			ID: id,
-			StandardClaims: jwt.StandardClaims{
-				ExpiresAt: Tokenexpirytime.Unix(),
-				Issuer:    "loginHandler",
-			},
-		}
-		Token := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
-
-		t, err := Token.SignedString(JWTKEY)
-		if err != nil {
-			serverError(&w, err)
-			pipe1 <- false
-			errorCode <- 0
-			return
-		}
-		/*
-			var stoken string
-			pipe4 := make(chan bool, 1)
-			go func() {
-				s := make([]byte, stokenlength)
-				for i := range s {
-					s[i] = sessionKey[rand.Intn(len(sessionKey))]
-				}
-				ok := models.AddSessionToken(string(s), userid)
-				if !ok {
-					pipe4 <- false
-					fmt.Println("adding session token failed.")
-					return
-				}
-				stoken = string(s)
-				pipe4 <- true
-			}()
-			if !<-pipe4 {
-				fmt.Println("adding sessionToken stage failed.")
-				serverError(&w, nil)
-				pipe1 <- false
-				errorCode <- 0
-				return
-			}*/
-		//stokenchan <- stoken
-		token <- t
-		pipe1 <- true
-		errorCode <- 0
+		dbpassword, exists, id, err = models.LoginUser(user.Username)
+		a <- 1
 	}()
-
-	code := <-errorCode
-	if code == 404 {
+	<-a
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	if !exists {
 		w.WriteHeader(404)
-		fmt.Println("404")
 		return
 	}
-	if code == 401 {
+
+	var passValid error
+	b := make(chan int, 1)
+	go func() {
+		passValid = bcrypt.CompareHashAndPassword([]byte(dbpassword), []byte(user.Password))
+		b <- 1
+	}()
+	<-b
+	if passValid != nil {
 		w.WriteHeader(401)
-		fmt.Println("401")
 		return
 	}
-	if !<-pipe1 {
-		fmt.Println("stage failed.")
+	payload := CustomPayload{
+		ID: id,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: Tokenexpirytime.Unix(),
+			Issuer:    "loginHandler",
+		},
+	}
+	Token := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
+
+	t, err := Token.SignedString(JWTKEY)
+	if err != nil {
+		serverError(&w, err)
 		return
 	}
-	t := <-token
-	/*
-		http.SetCookie(w, &http.Cookie{
-			Name:    "token",
-			Value:   t,
-			Expires: Tokenexpirytime,
-		})
-	*/
 	ts, err := json.Marshal(t)
 	if err != nil {
 		serverError(&w, err)
@@ -276,60 +188,60 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(200)
 	w.Write(ts)
-}
+	/*
+		var stoken string
+		pipe4 := make(chan bool, 1)
+		go func() {
+			s := make([]byte, stokenlength)
+			for i := range s {
+				s[i] = sessionKey[rand.Intn(len(sessionKey))]
+			}
+			ok := models.AddSessionToken(string(s), userid)
+			if !ok {
+				pipe4 <- false
+				fmt.Println("adding session token failed.")
+				return
+			}
+			stoken = string(s)
+			pipe4 <- true
+		}()
+		if !<-pipe4 {
+			fmt.Println("adding sessionToken stage failed.")
+			serverError(&w, nil)
+			pipe1 <- false
+			errorCode <- 0
+			return
+		}*/
+	//stokenchan <- stoken
 
-func AuthenticateTokenAndSendUserID(w *http.ResponseWriter, r *http.Request) (bool, uint64) {
-	var token string
-	var userid uint64
-	token = r.Header.Get("Authorization")
-	//token = GetCookieByName(r.Cookies(), "Authorization")
-	t, err := jwt.ParseWithClaims(token, &CustomPayload{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(JWTKEY), nil
-	})
-	if err != nil {
-		fmt.Println("Token invalid")
-		(*w).WriteHeader(400)
-		fmt.Println(err)
-		return false, 0
-	}
+	/*
+		http.SetCookie(w, &http.Cookie{
+			Name:    "token",
+			Value:   t,
+			Expires: Tokenexpirytime,
+		})
+	*/
 
-	if p, ok := t.Claims.(*CustomPayload); ok && t.Valid {
-		userid = p.ID
-		/*
-			pipe1 := make(chan bool, 1)
-			go func() {
-
-				active := models.CheckUserLoggedIn(userid)
-				if !active {
-					pipe1 <- false
-					return
-				}
-				pipe1 <- true
-			}()
-			if !<-pipe1 {
-				fmt.Println("User is !active")
-				(*w).WriteHeader(401)
-				return false, 0
-			}*/
-		return true, userid
-	}
-	return false, 0
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	var userid uint64
-	a := make(chan bool, 1)
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
 	go func() {
-		ok, b := AuthenticateTokenAndSendUserID(&w, r)
-		if ok {
-			userid = b
-			a <- true
-		}
-		a <- false
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 
 	}()
-	if !<-a {
-		//error codes handled by authhandler
+
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+
+	if tokenInvalid {
+		w.WriteHeader(400)
 		return
 	}
 	/*
