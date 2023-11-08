@@ -6,4 +6,6 @@
 - personalised home page
 more features yet to come!
 
+## Components
+  controllers work in a stage fashion where each stage is dependant on its previous stage.
 Contributions are welcome!
