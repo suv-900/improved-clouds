@@ -44,20 +44,21 @@ func GetallpostsbyUser(w http.ResponseWriter, r *http.Request) {
 
 func CreatePost(w http.ResponseWriter, r *http.Request) {
 	var authorid uint64
-
-	pipe1 := make(chan bool, 1)
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
 	go func() {
-		ok, userid := AuthenticateTokenAndSendUserID(&w, r)
-		if ok {
-			authorid = userid
-			pipe1 <- true
-			return
-		}
-		pipe1 <- false
-		fmt.Printf("Error while parsing token.")
+		tokenExpired, authorid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 	}()
-	if !<-pipe1 {
-		//error codes are getting managed by AuthHandler
+	<-a
+
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+	if tokenInvalid {
+		w.WriteHeader(400)
 		return
 	}
 
@@ -113,22 +114,23 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 
 func DeletePost(w http.ResponseWriter, r *http.Request) {
 	var postid uint64
-
-	pipe1 := make(chan bool, 1)
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
 	go func() {
-		fmt.Println("verifying token.")
-		ok, _ := AuthenticateTokenAndSendUserID(&w, r)
-		if ok {
-			pipe1 <- true
-			return
-		}
-		pipe1 <- false
-		fmt.Printf("Error while parsing token.")
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 	}()
-	if !<-pipe1 {
+	<-a
+
+	if tokenInvalid {
+		w.WriteHeader(400)
 		return
 	}
-
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
 	pipe2 := make(chan bool, 1)
 	go func() {
 		err := models.DeletePost(postid)
@@ -149,24 +151,25 @@ func DeletePost(w http.ResponseWriter, r *http.Request) {
 
 func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	var postid uint64
-
-	pipe1 := make(chan bool, 1)
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
 	go func() {
-		fmt.Println("verifying token.")
-		ok, _ := AuthenticateTokenAndSendUserID(&w, r)
-		if ok {
-			pipe1 <- true
-			return
-		}
-		pipe1 <- false
-		fmt.Printf("Error while parsing token.")
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 	}()
-	if !<-pipe1 {
+	<-a
+
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+	if tokenInvalid {
+		w.WriteHeader(400)
 		return
 	}
 
 	pipe2 := make(chan bool, 1)
-
 	go func() {
 
 		rbyte, err := io.ReadAll(r.Body)
@@ -250,34 +253,31 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func LikePost(w http.ResponseWriter, r *http.Request) {
-	var ok bool
 	var postid uint64
 	var err error
+	var tokenInvalid bool
+	var tokenExpired bool
 	a := make(chan int, 1)
 	go func() {
-		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
-		if !ok {
-			a <- 1
-			return
-		}
-
-		vars := mux.Vars(r)
-		postidstr := vars["postid"]
-		postid, err = strconv.ParseUint(postidstr, 10, 64)
-		if err != nil {
-			serverError(&w, err)
-			a <- 1
-			return
-		}
-
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 	}()
 	<-a
-	if !ok {
+
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+
+	if tokenInvalid {
 		w.WriteHeader(400)
 		return
 	}
+	vars := mux.Vars(r)
+	postidstr := vars["postid"]
+	postid, err = strconv.ParseUint(postidstr, 10, 64)
 	if err != nil {
+		serverError(&w, err)
 		return
 	}
 
@@ -293,34 +293,32 @@ func LikePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func DislikePost(w http.ResponseWriter, r *http.Request) {
-	var ok bool
 	var postid uint64
 	var err error
+	var tokenExpired bool
+	var tokenInvalid bool
 	a := make(chan int, 1)
 	go func() {
-		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
-		if !ok {
-			a <- 1
-			return
-		}
-
-		vars := mux.Vars(r)
-		postidstr := vars["postid"]
-		postid, err = strconv.ParseUint(postidstr, 10, 64)
-		if err != nil {
-			serverError(&w, err)
-			a <- 1
-			return
-		}
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 
 		a <- 1
 	}()
 	<-a
-	if !ok {
+	if tokenExpired {
+		w.WriteHeader(401)
+	}
+
+	if tokenInvalid {
 		w.WriteHeader(400)
 		return
 	}
+	vars := mux.Vars(r)
+	postidstr := vars["postid"]
+	postid, err = strconv.ParseUint(postidstr, 10, 64)
 	if err != nil {
+		serverError(&w, err)
+		a <- 1
 		return
 	}
 

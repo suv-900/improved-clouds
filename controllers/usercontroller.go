@@ -142,7 +142,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var id uint64
 	a := make(chan int, 1)
 	go func() {
-		dbpassword, exists, id, err = models.LoginUser(user.Username)
+		dbpassword, exists, id = models.LoginUser(user.Username)
 		a <- 1
 	}()
 	<-a

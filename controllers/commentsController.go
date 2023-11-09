@@ -17,18 +17,22 @@ import (
 func AddComment(w http.ResponseWriter, r *http.Request) {
 	var userid uint64
 	var username string
-	a := make(chan bool, 1)
+	var tokenInvalid bool
+	var tokenExpired bool
+
+	a := make(chan int, 1)
 	go func() {
-		ok, u := AuthenticateTokenAndSendUserID(&w, r)
-		if ok {
-			userid = u
-			a <- true
-			return
-		}
-		fmt.Println("Token error")
-		a <- false
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 	}()
-	if !<-a {
+	<-a
+
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+	if tokenInvalid {
+		w.WriteHeader(400)
 		return
 	}
 
@@ -209,22 +213,23 @@ func ParseToken(token string) (uint64, bool) {
 }
 
 func LikeComment(w http.ResponseWriter, r *http.Request) {
-	var ok bool
+	var tokenInvalid bool
+	var tokenExpired bool
 	a := make(chan int, 1)
 	go func() {
-		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
-		if !ok {
-			a <- 1
-			return
-		}
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 	}()
 	<-a
-	if !ok {
+	if tokenInvalid {
 		w.WriteHeader(400)
 		return
 	}
 
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
 	var commentID uint64
 	var err error
 	b := make(chan int, 1)
@@ -254,22 +259,24 @@ func LikeComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func DislikeComment(w http.ResponseWriter, r *http.Request) {
-	var ok bool
+	var tokenExpired bool
+	var tokenInvalid bool
 	a := make(chan int, 1)
 	go func() {
-		ok, _ = AuthenticateTokenAndSendUserID(&w, r)
-		if !ok {
-			a <- 1
-			return
-		}
+		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 	}()
 	<-a
-	if !ok {
+
+	if tokenInvalid {
 		w.WriteHeader(400)
 		return
 	}
 
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
 	var commentID uint64
 	var err error
 	b := make(chan int, 1)
