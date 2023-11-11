@@ -46,18 +46,20 @@ func DislikeAComment(commentid uint64) {
 	db.Exec("UPDATE comments SET comment_likes=comment_likes-1 WHERE comment_id=?", commentid)
 }
 
-func Get5CommentsByPostID(postid uint64) []UsernameAndComment {
+func Get5CommentsByPostID(postid uint64) ([]UsernameAndComment, error) {
 	//commentarr := make([]UsernameAndComment, 5)
 	commentsvec := []UsernameAndComment{}
 	//TODO OFFSET to hold a bar for next comments
 	a := make(chan int, 1)
+	var err error
 	go func() {
 		sql := "SELECT comment_id,user_id,username,comment_content FROM comments WHERE post_id=? ORDER BY comment_likes DESC LIMIT 5 "
-		db.Raw(sql, postid).Scan(&commentsvec)
+		r := db.Raw(sql, postid).Scan(&commentsvec)
+		err = r.Error
 		a <- 1
 	}()
 	<-a
-	return commentsvec
+	return commentsvec, err
 	/*
 	   		rawComment := UsernameAndComment{
 	   			UserID:          comment.User_id,

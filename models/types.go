@@ -42,12 +42,15 @@ type UsernameAndPost struct {
 	Post     Posts
 }
 
+type PostUsernameComments_WithUserPreference struct {
+	PostAndUserPreferences PostAndUserPreferences
+	Comments               []UsernameAndComment
+}
 type PostUsernameComments struct {
 	Post     Posts
 	Username string
 	Comments []UsernameAndComment
 }
-
 type UsernameAndComment struct {
 	User_id         uint64
 	Username        string
@@ -58,4 +61,10 @@ type UsernameAndComment struct {
 type Passanduserid struct {
 	Password string `db:"password"`
 	User_id  uint64 `db:"user_id"`
+}
+type PostAndUserPreferences struct {
+	Post               Posts
+	Username           string
+	PostLikedByUser    bool
+	PostDislikedByUser bool
 }
