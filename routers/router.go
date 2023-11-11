@@ -18,6 +18,10 @@ func HandleRoutes(router *mux.Router) {
 	router.HandleFunc("/viewpost/{id:[0-9]+}", controllers.GetPostByID).Methods("GET")
 	router.HandleFunc("/likecomment", controllers.LikeComment).Methods("POST")
 	router.HandleFunc("/dislikecomment", controllers.DislikeComment).Methods("POST")
+
 	router.HandleFunc("/likepost/{postid:[0-9]+}", controllers.LikePost).Methods("POST")
+	router.HandleFunc("/removelikefrompost/{postid:[0-9]+}", controllers.RemoveLikeFromPost).Methods("POST")
+
 	router.HandleFunc("/dislikepost/{postid:[0-9]+}", controllers.DislikePost).Methods("POST")
+	router.HandleFunc("/removedislikefrompost/{postid:[0-9]+}", controllers.RemoveDislikeFromPost).Methods("POST")
 }
