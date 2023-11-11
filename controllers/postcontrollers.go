@@ -305,6 +305,7 @@ func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println(finalResult)
 	var jsonReply []byte
 	jsonReply, err = json.Marshal(finalResult)
 	if err != nil {

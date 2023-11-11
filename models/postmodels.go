@@ -74,15 +74,17 @@ func GetPostsByUserId(userid uint64) []Posts {
 
 func GetPostAndUserPreferences(postid uint64, userid uint64) (PostAndUserPreferences, error) {
 	var post PostAndUserPreferences
+	var postzz Posts
 	var err error
 	a := make(chan int, 1)
 	go func() {
-		r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&post.Post)
+		r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&postzz)
 		if r.Error != nil {
 			err = r.Error
 			a <- 1
 			return
 		}
+		post.Post = postzz
 
 		r = db.Raw("SELECT liked FROM posts_liked_by_user WHERE user_id=? AND post_id=?", userid, postid).Scan(&post.PostLikedByUser)
 		if r.Error != nil {

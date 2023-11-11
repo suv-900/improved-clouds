@@ -15,9 +15,11 @@ func HandleRoutes(router *mux.Router) {
 	router.HandleFunc("/authtoken", controllers.CreatePost).Methods("POST")
 	router.HandleFunc("/deleteuser", controllers.DeleteUser).Methods("DELETE")
 	router.HandleFunc("/addcomment/{id:[0-9]+}", controllers.AddComment).Methods("POST")
-	router.HandleFunc("/viewpost/{id:[0-9]+}", controllers.GetPostByID).Methods("GET")
 	router.HandleFunc("/likecomment", controllers.LikeComment).Methods("POST")
 	router.HandleFunc("/dislikecomment", controllers.DislikeComment).Methods("POST")
+
+	router.HandleFunc("/viewpost/{id:[0-9]+}", controllers.GetPostByID).Methods("GET")
+	router.HandleFunc("/viewpostToken/{id:[0-9]+}", controllers.GetPostByID_WithUserPreferences).Methods("GET")
 
 	router.HandleFunc("/likepost/{postid:[0-9]+}", controllers.LikePost).Methods("POST")
 	router.HandleFunc("/removelikefrompost/{postid:[0-9]+}", controllers.RemoveLikeFromPost).Methods("POST")
