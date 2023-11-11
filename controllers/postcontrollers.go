@@ -218,10 +218,14 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	var post models.Posts
 	var username string
 	go func() {
-		post, username = models.PostById(postid)
+		post, username, err = models.PostById(postid)
 		a <- 1
 	}()
 	<-a
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 
 	b := make(chan int, 1)
 	var comments []models.UsernameAndComment
@@ -231,22 +235,19 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	}()
 	<-b
 
-	pipe2 := make(chan bool, 1)
+	c := make(chan int, 1)
 	var parsedRes []byte
 	finalRes := models.PostUsernameComments{Username: username, Post: post, Comments: comments}
 	go func() {
 		parsedRes, err = json.Marshal(finalRes)
-		if err != nil {
-			serverError(&w, err)
-			pipe2 <- false
-			return
-		}
-		pipe2 <- true
+		c <- 1
 	}()
-	if !<-pipe2 {
-		fmt.Println("Error occured while parsing post to json")
+	<-c
+	if err != nil {
+		serverError(&w, err)
 		return
 	}
+
 	w.WriteHeader(200)
 	w.Write(parsedRes)
 
@@ -257,9 +258,10 @@ func LikePost(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var tokenInvalid bool
 	var tokenExpired bool
+	var userid uint64
 	a := make(chan int, 1)
 	go func() {
-		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 	}()
 	<-a
@@ -268,7 +270,6 @@ func LikePost(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
-
 	if tokenInvalid {
 		w.WriteHeader(400)
 		return
@@ -284,11 +285,14 @@ func LikePost(w http.ResponseWriter, r *http.Request) {
 	//save user prefrence
 	b := make(chan int, 1)
 	go func() {
-		models.LikePostByID(postid)
+		err = models.LikePostByID(userid, postid)
 		b <- 1
 	}()
 	<-b
-
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 	w.WriteHeader(200)
 }
 
@@ -297,9 +301,54 @@ func DislikePost(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var tokenExpired bool
 	var tokenInvalid bool
+	var userid uint64
 	a := make(chan int, 1)
 	go func() {
-		tokenExpired, _, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
+
+		a <- 1
+	}()
+	<-a
+	if tokenExpired {
+		w.WriteHeader(401)
+	}
+	if tokenInvalid {
+		w.WriteHeader(400)
+		return
+	}
+	vars := mux.Vars(r)
+	postidstr := vars["postid"]
+	postid, err = strconv.ParseUint(postidstr, 10, 64)
+	if err != nil {
+		serverError(&w, err)
+		a <- 1
+		return
+	}
+
+	//save user prefrence
+	b := make(chan int, 1)
+	go func() {
+		err = models.DislikePostByID(userid, postid)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	w.WriteHeader(200)
+}
+
+func RemoveLikeFromPost(w http.ResponseWriter, r *http.Request) {
+	var postid uint64
+	var userid uint64
+	var err error
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
+	go func() {
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 
 		a <- 1
@@ -322,17 +371,63 @@ func DislikePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//save user prefrence
 	b := make(chan int, 1)
 	go func() {
-		models.DislikePostByID(postid)
+		err = models.RemoveLikeFromPost(userid, postid)
 		b <- 1
 	}()
 	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 
 	w.WriteHeader(200)
 }
+func RemoveDislikeFromPost(w http.ResponseWriter, r *http.Request) {
+	var postid uint64
+	var err error
+	var tokenExpired bool
+	var tokenInvalid bool
+	var userid uint64
+	a := make(chan int, 1)
+	go func() {
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
 
+		a <- 1
+	}()
+	<-a
+	if tokenExpired {
+		w.WriteHeader(401)
+	}
+
+	if tokenInvalid {
+		w.WriteHeader(400)
+		return
+	}
+	vars := mux.Vars(r)
+	postidstr := vars["postid"]
+	postid, err = strconv.ParseUint(postidstr, 10, 64)
+	if err != nil {
+		serverError(&w, err)
+		a <- 1
+		return
+	}
+
+	b := make(chan int, 1)
+	go func() {
+		err = models.RemoveDislikeFromPost(userid, postid)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	w.WriteHeader(200)
+}
 func TokenVerifier(s string, r *http.Request) (bool, *CustomPayload) {
 	t := GetCookieByName(r.Cookies(), s)
 	if t == "" {

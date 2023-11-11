@@ -15,8 +15,6 @@ import (
 )
 
 // TODO token blacklist
-var sessionKey = "dasd0871hudsliuqnbvc872832madsa1207badp1831ajlq32103avkwqe871181"
-var stokenlength = 10
 var bycryptCost = 3
 var JWTKEY = []byte(os.Getenv("JWT_KEY"))
 var Tokenexpirytime = time.Now().Add(60 * time.Minute)
