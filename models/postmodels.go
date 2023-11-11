@@ -79,11 +79,51 @@ func PostById(postid uint64) (Posts, string) {
 	return post, username
 }
 
-func LikePostByID(postid uint64) {
-	db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
+func LikePostByID(userid uint64, postid uint64) error {
+	r := db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	r = db.Exec("INSERT INTO post_likes (post_id,user_id) VALUES(?,?)", userid, postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	return nil
 }
-func DislikePostByID(postid uint64) {
-	db.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
+
+func RemoveLikeFromPost(userid uint64, postid uint64) error {
+	r := db.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	r = db.Exec("DELETE FROM post_likes WHERE post_id=? AND user_id=?", postid, userid)
+	if r.Error != nil {
+		return r.Error
+	}
+	return nil
+}
+func RemoveDislikeFromPost(userid uint64, postid uint64) error {
+	r := db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	r = db.Exec("DELETE FROM post_dislikes WHERE post_id=? AND user_id=?", postid, userid)
+	if r.Error != nil {
+		return r.Error
+	}
+	return nil
+
+}
+func DislikePostByID(userid uint64, postid uint64) error {
+	r := db.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	r = db.Exec("INSERT INTO post_dislikes (post_id,user_id) VALUES(?,?)", userid, postid)
+	if r.Error != nil {
+		return r.Error
+	}
+	return nil
 }
 func FeedGenerator(userid uint64) []Posts {
 
