@@ -71,12 +71,15 @@ func GetPostsByUserId(userId uint64) []Posts {
 	db.Raw("SELECT (post_title,post_content) FROM posts WHERE authorid=? LIMIT 5", userId).Scan(&posts)
 	return posts
 }
-func PostById(postid uint64) (Posts, string) {
+func PostById(postid uint64) (Posts, string, error) {
 	var post Posts
 	var username string
-	db.Raw("SELECT post_title,post_content,author_id FROM posts WHERE post_id=?", postid).Scan(&post)
-	db.Raw("SELECT username FROM users WHERE user_id=?", post.Author_id).Scan(&username)
-	return post, username
+	r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&post)
+	if r.Error != nil {
+		return post, username, r.Error
+	}
+	r = db.Raw("SELECT username FROM users WHERE user_id=?", post.Author_id).Scan(&username)
+	return post, username, r.Error
 }
 
 func LikePostByID(userid uint64, postid uint64) error {
@@ -84,7 +87,7 @@ func LikePostByID(userid uint64, postid uint64) error {
 	if r.Error != nil {
 		return r.Error
 	}
-	r = db.Exec("INSERT INTO posts_liked_by_user (post_id,user_id) VALUES(?,?)", userid, postid)
+	r = db.Exec("INSERT INTO posts_liked_by_user (post_id,user_id) VALUES(?,?)", postid, userid)
 	if r.Error != nil {
 		return r.Error
 	}
@@ -107,7 +110,7 @@ func DislikePostByID(userid uint64, postid uint64) error {
 	if r.Error != nil {
 		return r.Error
 	}
-	r = db.Exec("INSERT INTO posts_disliked_by_user (post_id,user_id) VALUES(?,?)", userid, postid)
+	r = db.Exec("INSERT INTO posts_disliked_by_user (post_id,user_id) VALUES(?,?)", postid, userid)
 	if r.Error != nil {
 		return r.Error
 	}
