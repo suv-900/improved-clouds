@@ -66,11 +66,50 @@ func UpdatePost(postid uint64, post Posts) error {
 	}
 
 }
-func GetPostsByUserId(userId uint64) []Posts {
+func GetPostsByUserId(userid uint64) []Posts {
 	var posts []Posts
-	db.Raw("SELECT (post_title,post_content) FROM posts WHERE authorid=? LIMIT 5", userId).Scan(&posts)
+	db.Raw("SELECT (post_title,post_content) FROM posts WHERE authorid=? LIMIT 5", userid).Scan(&posts)
 	return posts
 }
+
+func GetPostAndUserPreferences(postid uint64, userid uint64) (PostAndUserPreferences, error) {
+	var post PostAndUserPreferences
+	var err error
+	a := make(chan int, 1)
+	go func() {
+		r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&post.Post)
+		if r.Error != nil {
+			err = r.Error
+			a <- 1
+			return
+		}
+
+		r = db.Raw("SELECT liked FROM posts_liked_by_user WHERE user_id=? AND post_id=?", userid, postid).Scan(&post.PostLikedByUser)
+		if r.Error != nil {
+			err = r.Error
+			a <- 1
+			return
+		}
+		a <- 1
+	}()
+	a <- 1
+	if err != nil {
+		return post, err
+	}
+
+	b := make(chan int, 1)
+	go func() {
+		r := db.Raw("SELECT username FROM users WHERE user_id=?", post.Post.Author_id)
+		err = r.Error
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		return post, err
+	}
+	return post, nil
+}
+
 func PostById(postid uint64) (Posts, string, error) {
 	var post Posts
 	var username string
