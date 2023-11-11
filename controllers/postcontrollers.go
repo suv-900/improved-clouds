@@ -252,16 +252,7 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	w.Write(parsedRes)
 
 }
-func GetPost_ByID_WithToken(w http.ResponseWriter, r *http.Request) {
-	var postidstr string
-	var postid uint64
-	vars := mux.Vars(r)
-	postidstr = vars["id"]
-	postid, err := strconv.ParseUint(postidstr, 10, 64)
-	if err != nil {
-		serverError(&w, err)
-		return
-	}
+func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 
 	var userid uint64
 	var tokenExpired bool
@@ -271,12 +262,23 @@ func GetPost_ByID_WithToken(w http.ResponseWriter, r *http.Request) {
 		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
 	}()
+	<-a
 	if tokenExpired {
 		w.WriteHeader(401)
 		return
 	}
 	if tokenInvalid {
 		w.WriteHeader(400)
+		return
+	}
+
+	var postidstr string
+	var postid uint64
+	vars := mux.Vars(r)
+	postidstr = vars["id"]
+	postid, err := strconv.ParseUint(postidstr, 10, 64)
+	if err != nil {
+		serverError(&w, err)
 		return
 	}
 
