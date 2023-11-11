@@ -252,7 +252,68 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	w.Write(parsedRes)
 
 }
+func GetPost_ByID_WithToken(w http.ResponseWriter, r *http.Request) {
+	var postidstr string
+	var postid uint64
+	vars := mux.Vars(r)
+	postidstr = vars["id"]
+	postid, err := strconv.ParseUint(postidstr, 10, 64)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 
+	var userid uint64
+	var tokenExpired bool
+	var tokenInvalid bool
+	a := make(chan int, 1)
+	go func() {
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
+	}()
+	if tokenExpired {
+		w.WriteHeader(401)
+		return
+	}
+	if tokenInvalid {
+		w.WriteHeader(400)
+		return
+	}
+
+	b := make(chan int, 1)
+	var finalResult models.PostUsernameComments_WithUserPreference
+	go func() {
+		finalResult.PostAndUserPreferences, err = models.GetPostAndUserPreferences(postid, userid)
+		b <- 1
+	}()
+	<-b
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	c := make(chan int, 1)
+	go func() {
+		finalResult.Comments, err = models.Get5CommentsByPostID(postid)
+		c <- 1
+	}()
+	<-c
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	var jsonReply []byte
+	jsonReply, err = json.Marshal(finalResult)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write(jsonReply)
+
+}
 func LikePost(w http.ResponseWriter, r *http.Request) {
 	var postid uint64
 	var err error
