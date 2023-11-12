@@ -72,46 +72,56 @@ func GetPostsByUserId(userid uint64) []Posts {
 	return posts
 }
 
-func GetPostAndUserPreferences(postid uint64, userid uint64) (PostAndUserPreferences, error) {
-	var post PostAndUserPreferences
-	var postzz Posts
+func GetPostAndUserPreferences(postid uint64, userid uint64) (Posts, string, error) {
+	var post Posts
 	var err error
+	var username string
 	a := make(chan int, 1)
 	go func() {
-		r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&postzz)
-		if r.Error != nil {
-			err = r.Error
-			a <- 1
-			return
-		}
-		post.Post = postzz
-
-		r = db.Raw("SELECT liked FROM posts_liked_by_user WHERE user_id=? AND post_id=?", userid, postid).Scan(&post.PostLikedByUser)
-		if r.Error != nil {
-			err = r.Error
-			a <- 1
-			return
-		}
+		r := db.Raw("SELECT post_title,post_content,author_id,post_likes FROM posts WHERE post_id=?", postid).Scan(&post)
+		err = r.Error
 		a <- 1
 	}()
-	a <- 1
+	<-a
 	if err != nil {
-		return post, err
+		return post, username, err
 	}
 
 	b := make(chan int, 1)
 	go func() {
-		r := db.Raw("SELECT username FROM users WHERE user_id=?", post.Post.Author_id)
+		r := db.Raw("SELECT username FROM users WHERE user_id=?", post.Author_id).Scan(&username)
 		err = r.Error
 		b <- 1
 	}()
 	<-b
 	if err != nil {
-		return post, err
+		return post, username, err
 	}
-	return post, nil
+
+	return post, username, nil
 }
 
+func Check_if_user_likedPost(userid uint64, postid uint64) (bool, bool, error) {
+	var userLikedPost bool
+	var userDislikedPost bool
+	var err error
+	a := make(chan int, 1)
+	go func() {
+
+		r := db.Raw("SELECT liked from posts_liked_by_user WHERE user_id=? AND post_id=?", userid, postid).Scan(&userLikedPost)
+		if r.Error != nil {
+			err = r.Error
+			a <- 1
+			return
+		}
+		db.Raw("SELECT disliked FROM posts_disliked_by_user WHERE user_id=? AND post_id=?", userid, postid).Scan(&userDislikedPost)
+		err = r.Error
+		a <- 1
+	}()
+	<-a
+
+	return userLikedPost, userDislikedPost, err
+}
 func PostById(postid uint64) (Posts, string, error) {
 	var post Posts
 	var username string
