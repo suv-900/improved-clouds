@@ -43,8 +43,11 @@ type UsernameAndPost struct {
 }
 
 type PostUsernameComments_WithUserPreference struct {
-	PostAndUserPreferences PostAndUserPreferences
-	Comments               []UsernameAndComment
+	Post               Posts
+	Username           string
+	PostLikedByUser    bool
+	PostDislikedByUser bool
+	Comments           []UsernameAndComment
 }
 type PostUsernameComments struct {
 	Post     Posts
