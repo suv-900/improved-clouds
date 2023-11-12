@@ -230,19 +230,17 @@ func GetPostByID(w http.ResponseWriter, r *http.Request) {
 	b := make(chan int, 1)
 	var comments []models.UsernameAndComment
 	go func() {
-		comments = models.GetAllCommentsByPostID(postid)
+		comments, err = models.Get5CommentsByPostID(postid)
 		b <- 1
 	}()
 	<-b
-
-	c := make(chan int, 1)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
 	var parsedRes []byte
 	finalRes := models.PostUsernameComments{Username: username, Post: post, Comments: comments}
-	go func() {
-		parsedRes, err = json.Marshal(finalRes)
-		c <- 1
-	}()
-	<-c
+	parsedRes, err = json.Marshal(finalRes)
 	if err != nil {
 		serverError(&w, err)
 		return
@@ -283,9 +281,13 @@ func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b := make(chan int, 1)
-	var finalResult models.PostUsernameComments_WithUserPreference
+	var post models.Posts
+	var username string
+	var userLikedPost bool
+	var userDislikedPost bool
 	go func() {
-		finalResult.PostAndUserPreferences, err = models.GetPostAndUserPreferences(postid, userid)
+		post, username, err = models.GetPostAndUserPreferences(postid, userid)
+		userLikedPost, userDislikedPost, err = models.Check_if_user_likedPost(userid, postid)
 		b <- 1
 	}()
 	<-b
@@ -295,8 +297,9 @@ func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := make(chan int, 1)
+	var comments []models.UsernameAndComment
 	go func() {
-		finalResult.Comments, err = models.Get5CommentsByPostID(postid)
+		comments, err = models.Get5CommentsByPostID(postid)
 		c <- 1
 	}()
 	<-c
@@ -305,7 +308,13 @@ func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println(finalResult)
+	finalResult := &models.PostUsernameComments_WithUserPreference{
+		Post:               post,
+		Username:           username,
+		PostLikedByUser:    userLikedPost,
+		PostDislikedByUser: userDislikedPost,
+		Comments:           comments,
+	}
 	var jsonReply []byte
 	jsonReply, err = json.Marshal(finalResult)
 	if err != nil {
