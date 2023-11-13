@@ -291,6 +291,8 @@ func GetPostByID_WithUserPreferences(w http.ResponseWriter, r *http.Request) {
 		b <- 1
 	}()
 	<-b
+	fmt.Println(userLikedPost)
+	fmt.Println(userDislikedPost)
 	if err != nil {
 		serverError(&w, err)
 		return
@@ -467,8 +469,6 @@ func RemoveDislikeFromPost(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
 		a <- 1
-
-		a <- 1
 	}()
 	<-a
 	if tokenExpired {
@@ -484,7 +484,6 @@ func RemoveDislikeFromPost(w http.ResponseWriter, r *http.Request) {
 	postid, err = strconv.ParseUint(postidstr, 10, 64)
 	if err != nil {
 		serverError(&w, err)
-		a <- 1
 		return
 	}
 

@@ -134,15 +134,57 @@ func PostById(postid uint64) (Posts, string, error) {
 }
 
 func LikePostByID(userid uint64, postid uint64) error {
-	r := db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
-	if r.Error != nil {
-		return r.Error
+	var err error
+
+	c := make(chan int, 1)
+	go func() {
+		r := db.Exec("DELETE FROM posts_disliked_by_user WHERE user_id=? AND post_id=?", userid, postid)
+		if r.Error != nil {
+			err = r.Error
+			c <- 1
+			return
+		}
+		c <- 1
+	}()
+	<-c
+
+	if err != nil {
+		return err
 	}
-	r = db.Exec("INSERT INTO posts_liked_by_user (post_id,user_id) VALUES(?,?)", postid, userid)
-	if r.Error != nil {
-		return r.Error
+
+	a := make(chan int, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)
+		if r.Error != nil {
+			err = r.Error
+			a <- 1
+			tx.Rollback()
+			return
+		}
+		tx.Commit()
+		a <- 1
+	}()
+	<-a
+	if err != nil {
+		return err
 	}
-	return nil
+
+	b := make(chan int, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Exec("INSERT INTO posts_liked_by_user (user_id,post_id,liked) VALUES(?,?,?)", userid, postid, true)
+		if r.Error != nil {
+			err = r.Error
+			b <- 1
+			tx.Rollback()
+			return
+		}
+		tx.Commit()
+		b <- 1
+	}()
+	<-b
+	return err
 }
 
 func RemoveLikeFromPost(userid uint64, postid uint64) error {
@@ -157,15 +199,60 @@ func RemoveLikeFromPost(userid uint64, postid uint64) error {
 	return nil
 }
 func DislikePostByID(userid uint64, postid uint64) error {
-	r := db.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
-	if r.Error != nil {
-		return r.Error
+	var err error
+
+	c := make(chan int, 1)
+	go func() {
+		r := db.Exec("DELETE FROM posts_liked_by_user WHERE user_id=? AND post_id=?", userid, postid)
+		if r.Error != nil {
+			err = r.Error
+			c <- 1
+			return
+		}
+		c <- 1
+	}()
+	<-c
+
+	if err != nil {
+		return err
 	}
-	r = db.Exec("INSERT INTO posts_disliked_by_user (post_id,user_id) VALUES(?,?)", postid, userid)
-	if r.Error != nil {
-		return r.Error
+
+	a := make(chan int, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Exec("UPDATE posts SET post_likes=post_likes-1 WHERE post_id=?", postid)
+		if r.Error != nil {
+			err = r.Error
+			tx.Rollback()
+			a <- 1
+			return
+		}
+		tx.Commit()
+		a <- 1
+	}()
+	<-a
+
+	if err != nil {
+		return err
 	}
-	return nil
+
+	b := make(chan int, 1)
+	go func() {
+		tx := db.Begin()
+		r := tx.Exec("INSERT INTO posts_disliked_by_user (post_id,user_id,disliked) VALUES(?,?,?)", postid, userid, true)
+
+		if r.Error != nil {
+			err = r.Error
+			tx.Rollback()
+			b <- 1
+			return
+		}
+		tx.Commit()
+		b <- 1
+
+	}()
+	<-b
+	return err
 }
 func RemoveDislikeFromPost(userid uint64, postid uint64) error {
 	r := db.Exec("UPDATE posts SET post_likes=post_likes+1 WHERE post_id=?", postid)

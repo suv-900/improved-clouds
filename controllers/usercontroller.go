@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/mux"
 	"github.com/suv-900/blog/models"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -384,7 +386,56 @@ func UpdateUserPass(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func GetUserById(w http.ResponseWriter, r *http.Request) {
+func GetUserInfo(w http.ResponseWriter, r *http.Request) {
+	var userid uint64
+	var username string
+	var err error
+
+	vars := mux.Vars(r)
+	useridstr := vars["userid"]
+	userid, err = strconv.ParseUint(useridstr, 10, 64)
+
+	var userInfo UserInfo
+
+}
+
+func AddProfilePicture(w http.ResponseWriter, r *http.Request) {
+	//TODO add the pic to a folder and add the address to the DB
+	var err error
+	var tokenExpired bool
+	var tokenInvalid bool
+	var userid uint64
+	a := make(chan int, 1)
+	go func() {
+		tokenExpired, userid, tokenInvalid = AuthenticateTokenAndSendUserID(r)
+		a <- 1
+
+	}()
+	<-a
+	if tokenInvalid {
+		w.WriteHeader(401)
+		return
+	}
+	if tokenExpired {
+		w.WriteHeader(400)
+		return
+	}
+
+	var imageString string
+	rbody, err := io.ReadAll(r.Body)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+	err = json.Unmarshal(rbody, &imageString)
+	if err != nil {
+		serverError(&w, err)
+		return
+	}
+
+}
+
+func Getass(w http.ResponseWriter, r *http.Request) {
 	username := r.URL.Query().Get("username")
 	if username == "" {
 		w.WriteHeader(400)
@@ -410,7 +461,7 @@ func GetUserById(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		channel2 <- models.GetPostsByUserId(userDetails.ID)
+		channel2 <- models.GetPostsByUserId(userDetails.UserID)
 	}()
 	posts := <-channel2
 

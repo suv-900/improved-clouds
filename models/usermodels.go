@@ -169,6 +169,11 @@ func GetUserDetails(username string) Users {
 	return user
 }
 
+func AddProfilePictureStoreURL(userid uint64, imageURLString string) error {
+	r := db.Exec("UPDATE users SET profilePicture=? WHERE user_id=?", imageURLString, userid)
+	return r.Error
+}
+
 // DONE
 func DeleteUser(userid uint64) error {
 	var err error

@@ -3,10 +3,11 @@ package models
 import "time"
 
 type Users struct {
-	ID        uint64    `gorm:"primaryKey"`
+	UserID    uint64    `gorm:"primaryKey"`
 	Username  string    `db:"username"`
 	Email     string    `db:"email"`
 	Password  string    `db:"password"`
+	ImageURL  string    `db:"imageURL"`
 	Active    bool      `db:"active"`
 	CreatedAt time.Time `db:"createdAt"`
 	UpdatedAt time.Time `db:"updatedAt"`
@@ -70,4 +71,14 @@ type PostAndUserPreferences struct {
 	Username           string
 	PostLikedByUser    bool
 	PostDislikedByUser bool
+}
+
+type UserInfo struct {
+	UserID         uint64
+	Username       string
+	UserPic        string
+	UserAbout      string
+	UserStatus     string
+	Posts          Posts
+	UserJoinedDate string
 }
